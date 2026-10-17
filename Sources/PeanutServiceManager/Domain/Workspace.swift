@@ -29,6 +29,8 @@ struct Service: Codable, Identifiable, Equatable {
     var environment: [String: String] = [:]
     var runtimeResourceID: UUID?
     var startsWithManager: Bool = false
+    var domain: String? = nil
+    var port: Int? = nil
 }
 
 struct ServiceGroup: Codable, Identifiable, Equatable {
