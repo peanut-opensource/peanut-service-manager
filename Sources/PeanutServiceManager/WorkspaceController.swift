@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     private var supervisor: SupervisorClient?
     private var observationTimer: Timer?
     private var observedServiceID: UUID?
+    private var outputWindowServiceIDs: Set<UUID> = []
     private var logSequences: [UUID: UInt64] = [:]
     private var didCheckStartupServices = false
 
@@ -286,23 +287,22 @@ final class AppModel: ObservableObject {
     }
 
     func observeWorkspace() {
-        observationTimer?.invalidate()
         refreshServiceStates()
-        if let observedServiceID { refreshServiceLogs(serviceID: observedServiceID) }
+        refreshObservedServiceLogs()
+        guard observationTimer == nil else { return }
         observationTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.refreshServiceStates()
-                if let serviceID = self.observedServiceID { self.refreshServiceLogs(serviceID: serviceID) }
+                self.refreshObservedServiceLogs()
             }
         }
         if let observationTimer { RunLoop.main.add(observationTimer, forMode: .common) }
     }
 
     func stopObservingWorkspace() {
-        observationTimer?.invalidate()
-        observationTimer = nil
         observedServiceID = nil
+        stopObservationTimerIfUnused()
     }
 
     private func refreshServiceStates(completion: (() -> Void)?) {
@@ -324,6 +324,28 @@ final class AppModel: ObservableObject {
         do { _ = try supervisorClient() }
         catch { errorMessage = error.localizedDescription; return }
         refreshServiceLogs(serviceID: serviceID)
+    }
+
+    func setOutputWindowOpen(_ isOpen: Bool, serviceID: UUID) {
+        if isOpen {
+            outputWindowServiceIDs.insert(serviceID)
+            observeWorkspace()
+        } else {
+            outputWindowServiceIDs.remove(serviceID)
+            stopObservationTimerIfUnused()
+        }
+    }
+
+    private func refreshObservedServiceLogs() {
+        var serviceIDs = outputWindowServiceIDs
+        if let observedServiceID { serviceIDs.insert(observedServiceID) }
+        serviceIDs.forEach(refreshServiceLogs(serviceID:))
+    }
+
+    private func stopObservationTimerIfUnused() {
+        guard observedServiceID == nil, outputWindowServiceIDs.isEmpty else { return }
+        observationTimer?.invalidate()
+        observationTimer = nil
     }
 
     func refreshServiceLogs(serviceID: UUID) {

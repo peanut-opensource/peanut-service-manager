@@ -208,7 +208,7 @@ struct WorkspaceView: View {
                 emptyMessage("先选择一个环境")
             }
         }
-        .background(ManagerStyle.panel)
+        .background(ManagerStyle.card)
     }
 
     private func serviceToolbar(_ environment: ProjectEnvironment) -> some View {
@@ -244,7 +244,9 @@ struct WorkspaceView: View {
         .buttonStyle(.borderless)
         .font(.caption)
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+        .background(ManagerStyle.accent.opacity(0.055))
+        .overlay(alignment: .bottom) { Rectangle().fill(ManagerStyle.accent.opacity(0.12)).frame(height: 1) }
     }
 
     private func serviceRow(_ item: Service, projectID: UUID, environmentID: UUID) -> some View {
@@ -271,10 +273,13 @@ struct WorkspaceView: View {
                 .buttonStyle(.borderless)
                 .help("编辑服务配置")
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 7)
-        .background(model.selectedServiceID == item.id ? ManagerStyle.selection : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(model.selectedServiceID == item.id ? ManagerStyle.accent.opacity(0.10) : Color(NSColor.textBackgroundColor).opacity(0.58))
+        .overlay(alignment: .leading) {
+            Capsule().fill(model.selectedServiceID == item.id ? ManagerStyle.accent : Color.clear).frame(width: 3).padding(.vertical, 5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         .listRowBackground(Color.clear)
         .contextMenu {
             Button("编辑服务") { editor = .service(projectID, environmentID, item, isNew: false) }
@@ -294,99 +299,106 @@ struct WorkspaceView: View {
                 Spacer(minLength: 4)
                 if let service { stateBadge(service) }
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 13)
-            Divider().opacity(0.55)
+            .padding(.horizontal, 17)
+            .padding(.vertical, 16)
+            .background(ManagerStyle.accent.opacity(0.045))
+            Divider().opacity(0.4)
             if let service, let environment {
                 serviceManagementContent(service, environment: environment)
             } else {
                 emptyMessage("选择服务后查看状态、操作和运行输出")
             }
         }
-        .background(ManagerStyle.panel)
+        .background(ManagerStyle.card)
     }
 
     private func serviceManagementContent(_ service: Service, environment: ProjectEnvironment) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    Label("进程", systemImage: "number").font(.caption).foregroundColor(.secondary)
-                    Text(model.processSnapshots[service.id]?.pid.map(String.init) ?? "未启动")
-                        .font(.system(.callout, design: .monospaced).weight(.medium))
-                    Spacer(minLength: 4)
-                    if let code = model.processSnapshots[service.id]?.exitCode {
-                        Text("退出码 \(code)").font(.caption).foregroundColor(code == 0 ? .secondary : .red)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Label("进程", systemImage: "number").font(.caption).foregroundColor(.secondary)
+                Text(model.processSnapshots[service.id]?.pid.map(String.init) ?? "未启动")
+                    .font(.system(.callout, design: .monospaced).weight(.medium))
+                Spacer(minLength: 4)
+                if let code = model.processSnapshots[service.id]?.exitCode {
+                    Text("退出码 \(code)").font(.caption.weight(.medium)).foregroundColor(code == 0 ? .secondary : .red)
                 }
+            }
 
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "folder").foregroundColor(ManagerStyle.accent)
-                    Text(service.workingDirectory).font(.caption).foregroundColor(.secondary)
-                        .lineLimit(3).textSelection(.enabled)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Label("工作目录", systemImage: "folder").font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                Text(service.workingDirectory).font(.system(.caption, design: .monospaced)).lineLimit(2).textSelection(.enabled)
+            }
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("启动命令").font(.caption).foregroundColor(.secondary)
-                    Text(service.command.isEmpty ? "尚未填写启动命令" : service.command)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(service.command.isEmpty ? .secondary : .primary)
-                        .lineLimit(4).textSelection(.enabled)
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Label("启动命令", systemImage: "chevron.left.forwardslash.chevron.right").font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                Text(service.command.isEmpty ? "尚未填写启动命令" : service.command)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(service.command.isEmpty ? .secondary : .primary)
+                    .lineLimit(2).textSelection(.enabled)
+            }
 
-                HStack(spacing: 8) {
-                    Button("启动") {
-                        guard let project else { return }
-                        model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    Button { guard let project else { return }; model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id) } label: {
+                        Label("启动", systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
                     .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
-                    Button("停止") { model.stopService(serviceID: service.id) }.disabled(!isActive(service))
-                    Button("重启") {
+                    Button { model.stopService(serviceID: service.id) } label: { Label("停止", systemImage: "stop.fill") }
+                        .disabled(!isActive(service))
+                    Button {
                         guard let project else { return }
                         model.restartService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
-                    }
-                    .disabled(!isActive(service))
-                    Spacer(minLength: 0)
-                    Button("编辑") {
+                    } label: { Label("重启", systemImage: "arrow.clockwise") }
+                        .disabled(!isActive(service))
+                }
+                .controlSize(.small)
+                HStack(spacing: 8) {
+                    Button {
                         guard let project else { return }
                         editor = .service(project.id, environment.id, service, isNew: false)
+                    } label: { Label("编辑配置", systemImage: "pencil") }
+                    Button { ServiceOutputWindowPresenter.show(model: model, service: service) } label: {
+                        Label("独立输出", systemImage: "macwindow")
                     }
-                    .help("编辑服务配置")
+                    .help("在单独窗口查看此服务的实时输出")
                 }
-
-                if let message = model.serviceErrors[service.id] ?? model.processSnapshots[service.id]?.message {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundColor(.red).fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label("运行输出", systemImage: "terminal")
-                            .font(.system(.callout, design: .rounded).weight(.semibold))
-                        Spacer()
-                        Button("清空") { model.clearServiceLogs(service.id) }
-                            .font(.caption).disabled((model.processLogs[service.id] ?? "").isEmpty)
-                    }
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            Text(logText(service))
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor((model.processLogs[service.id] ?? "").isEmpty ? .secondary : .primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
-                                .padding(10)
-                                .id("log-bottom")
-                        }
-                        .onAppear { proxy.scrollTo("log-bottom", anchor: .bottom) }
-                        .onChange(of: model.processLogs[service.id] ?? "") { _ in proxy.scrollTo("log-bottom", anchor: .bottom) }
-                    }
-                    .frame(minHeight: 150, maxHeight: 280)
-                    .background(Color.black.opacity(0.035))
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                }
+                .controlSize(.small)
             }
-            .padding(15)
+
+            if let message = model.serviceErrors[service.id] ?? model.processSnapshots[service.id]?.message {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundColor(.red).fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("运行输出", systemImage: "terminal").font(.system(.callout, design: .rounded).weight(.semibold))
+                    Spacer()
+                    Button("清空") { model.clearServiceLogs(service.id) }
+                        .font(.caption).disabled((model.processLogs[service.id] ?? "").isEmpty)
+                }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(logText(service))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor((model.processLogs[service.id] ?? "").isEmpty ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, minHeight: 250, alignment: .topLeading)
+                            .textSelection(.enabled)
+                            .padding(12)
+                            .id("log-bottom")
+                    }
+                    .onAppear { proxy.scrollTo("log-bottom", anchor: .bottom) }
+                    .onChange(of: model.processLogs[service.id] ?? "") { _ in proxy.scrollTo("log-bottom", anchor: .bottom) }
+                }
+                .frame(maxHeight: .infinity)
+                .background(Color(NSColor.textBackgroundColor))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.10), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
         }
+        .padding(16)
     }
 
     private func stateBadge(_ service: Service) -> some View {
@@ -731,19 +743,11 @@ private struct ServiceEditor: View {
                     Toggle("随管理器启动", isOn: $draft.startsWithManager)
                 }
                 Section("参数与说明") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("参数（每行一个）").font(.caption).foregroundColor(.secondary)
-                        TextEditor(text: $argumentsText).frame(height: 68)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("说明").font(.caption).foregroundColor(.secondary)
-                        TextEditor(text: $draft.description).frame(height: 55)
-                    }
+                    LabeledTextEditor(title: "启动参数", hint: "每行填写一个参数，空行会忽略。", placeholder: "例如：--port\n8080", text: $argumentsText, height: 90)
+                    LabeledTextEditor(title: "服务说明", hint: "记录此服务的用途或启动注意事项。", placeholder: "输入服务说明…", text: $draft.description, height: 72)
                 }
                 Section("环境变量") {
-                    Text("每行填写 KEY=VALUE；只在保存时更新。")
-                        .font(.caption).foregroundColor(.secondary)
-                    TextEditor(text: $environmentText).frame(height: 90)
+                    LabeledTextEditor(title: "环境变量", hint: "每行一项，格式为 KEY=VALUE；仅在保存时生效。", placeholder: "例如：APP_ENV=development\nPORT=8080", text: $environmentText, height: 110)
                 }
             }
             .padding(.horizontal, 14)
@@ -761,6 +765,43 @@ private struct ServiceEditor: View {
             }
         }
         .frame(minWidth: 650, minHeight: 560)
+    }
+}
+
+private struct LabeledTextEditor: View {
+    let title: String
+    let hint: String
+    let placeholder: String
+    @Binding var text: String
+    let height: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(.callout, design: .rounded).weight(.semibold))
+            Text(hint).font(.caption).foregroundColor(.secondary)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color(NSColor.textBackgroundColor))
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.primary.opacity(0.16), lineWidth: 1)
+                TextEditor(text: $text)
+                    .font(.system(.body, design: .monospaced))
+                    .padding(5)
+                    .background(Color.clear)
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.75))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: height)
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
