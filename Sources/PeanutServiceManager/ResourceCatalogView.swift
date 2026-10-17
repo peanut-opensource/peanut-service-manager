@@ -340,58 +340,94 @@ private struct ResourceEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(isNew ? "登记新资源" : "编辑资源").font(.system(.title3, design: .rounded).weight(.bold))
-                    Text("只填写此资源适用的信息，其他字段会随类型调整。")
-                        .font(.caption).foregroundColor(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 18).padding(.top, 16)
+            ManagerEditorHeader(
+                title: isNew ? "登记新资源" : "编辑资源",
+                subtitle: "填写资源信息；字段会根据资源类型显示",
+                icon: "externaldrive.fill"
+            )
             ScrollView {
-            Form {
-                Section(header: Text("基本信息")) {
-                    TextField("名称", text: $draft.name)
-                    Picker("类型", selection: $draft.type) { ForEach(ResourceType.allCases, id: \.self) { Text($0.displayName).tag($0) } }
-                    optionalField("版本", value: $draft.version)
-                    optionalField("来源", value: $draft.source)
-                    optionalField("用途", value: $draft.purpose)
-                    TextField("说明", text: optionalText($draft.notes))
-                }
-                if draft.type == .php || draft.type == .node || draft.type == .other {
-                    Section(header: Text("本机运行时")) { optionalField("可执行文件路径", value: $draft.executablePath) }
-                }
-                if draft.type == .mysql || draft.type == .redis || draft.type == .dockerContainer || draft.type == .other {
-                    Section(header: Text("连接信息")) {
-                        optionalField("主机地址", value: $draft.host)
-                        TextField("端口", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) }))
-                        optionalField(draft.type == .redis ? "数据库索引" : "数据库名称", value: $draft.database)
-                        optionalField("用户名", value: $draft.username)
-                        SecureField(draft.credentialReference == nil ? "密码（可选）" : "新密码（留空则保留现有密码）", text: $secret)
-                        if draft.credentialReference != nil {
-                            Label("已有密码已在本机加密保存", systemImage: "lock.fill").font(.caption).foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 14) {
+                    ManagerFormCard("基本信息", subtitle: "名称和类型用于识别资源及其适用范围。", icon: "tag") {
+                        VStack(alignment: .leading, spacing: 13) {
+                            ManagerTextField(title: "资源名称", placeholder: "例如 本机 MySQL", text: $draft.name)
+                            Picker("资源类型", selection: $draft.type) {
+                                ForEach(ResourceType.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                            }
+                            .pickerStyle(.menu)
+                            HStack(spacing: 12) {
+                                optionalField("版本", value: $draft.version, placeholder: "例如 8.4")
+                                optionalField("来源", value: $draft.source, placeholder: "例如 Homebrew")
+                            }
+                            HStack(spacing: 12) {
+                                optionalField("用途", value: $draft.purpose, placeholder: "例如 本机开发")
+                                optionalField("说明", value: optionalText($draft.notes), placeholder: "可选备注")
+                            }
                         }
                     }
-                }
-                if draft.type == .dockerContainer {
-                    Section(header: Text("容器标识")) {
-                        optionalField("Docker 上下文", value: $draft.dockerContext)
-                        optionalField("容器 ID", value: $draft.containerID)
-                        optionalField("容器名称", value: $draft.containerName)
+
+                    if draft.type == .php || draft.type == .node || draft.type == .other {
+                        ManagerFormCard("本机运行时", subtitle: "使用可执行文件的完整路径，便于准确选择版本。", icon: "terminal") {
+                            optionalField("可执行文件路径", value: $draft.executablePath, placeholder: "/opt/homebrew/bin/php")
+                        }
+                    }
+
+                    if draft.type == .mysql || draft.type == .redis || draft.type == .dockerContainer || draft.type == .other {
+                        ManagerFormCard("连接信息", subtitle: "填写应用实际可访问的地址；不会自动更改资源配置。", icon: "network") {
+                            VStack(alignment: .leading, spacing: 13) {
+                                HStack(spacing: 12) {
+                                    optionalField("主机地址", value: $draft.host, placeholder: "127.0.0.1")
+                                    ManagerTextField(
+                                        title: "端口",
+                                        placeholder: draft.type == .redis ? "6379" : "3306",
+                                        text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) })
+                                    )
+                                    .frame(width: 120)
+                                }
+                                optionalField(draft.type == .redis ? "数据库索引" : "数据库名称", value: $draft.database, placeholder: draft.type == .redis ? "0" : "可选")
+                                optionalField("用户名", value: $draft.username, placeholder: "可选")
+                                ManagerSecureField(
+                                    title: "资源密码（可选）",
+                                    placeholder: draft.credentialReference == nil ? "输入资源密码" : "留空以保留当前密码",
+                                    text: $secret
+                                )
+                                if draft.credentialReference != nil {
+                                    Label("已有密码已在本机加密保存", systemImage: "lock.fill")
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+
+                    if draft.type == .dockerContainer {
+                        ManagerFormCard("容器标识", subtitle: "只登记现有容器信息；应用不会管理容器启停。", icon: "shippingbox") {
+                            VStack(alignment: .leading, spacing: 13) {
+                                optionalField("Docker 上下文", value: $draft.dockerContext, placeholder: "default")
+                                optionalField("容器 ID", value: $draft.containerID, placeholder: "可选")
+                                optionalField("容器名称", value: $draft.containerName, placeholder: "例如 local-mysql")
+                            }
+                        }
+                    }
+
+                    if let credentialError {
+                        Label(credentialError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout).foregroundColor(ManagerStyle.danger)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(ManagerStyle.danger.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                     }
                 }
-                if let credentialError = credentialError {
-                    Text(credentialError).font(.caption).foregroundColor(.red)
-                }
+                .padding(18)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            }
-            HStack { Spacer(); Button("取消") { presentationMode.wrappedValue.dismiss() }; Button("保存") { save() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(ManagerStyle.accent).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-                .padding(14)
+            .background(ManagerStyle.canvas)
+            editorButtonsForResource
         }
-        .frame(minWidth: 520, minHeight: 580)
+        .frame(width: 660, height: editorHeight)
+        .background(ManagerStyle.canvas)
+    }
+
+    private var editorHeight: CGFloat {
+        max(440, min(660, (NSScreen.main?.visibleFrame.height ?? 760) - 110))
     }
 
     private func save() {
@@ -419,8 +455,34 @@ private struct ResourceEditor: View {
         }
     }
 
-    private func optionalField(_ title: String, value: Binding<String?>) -> some View {
-        TextField(title, text: Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 }))
+    private var editorButtonsForResource: some View {
+        HStack {
+            Spacer()
+            Button("取消") { presentationMode.wrappedValue.dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .buttonStyle(.bordered)
+            Button("保存") { save() }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(ManagerStyle.accent)
+                .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 13)
+        .background(ManagerStyle.card)
+        .overlay(alignment: .top) { Rectangle().fill(ManagerStyle.cardBorder).frame(height: 1) }
+    }
+
+    private func optionalField(_ title: String, value: Binding<String?>, placeholder: String = "") -> some View {
+        ManagerTextField(
+            title: title,
+            placeholder: placeholder.isEmpty ? title : placeholder,
+            text: Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 })
+        )
+    }
+
+    private func optionalField(_ title: String, value: Binding<String>, placeholder: String) -> some View {
+        ManagerTextField(title: title, placeholder: placeholder, text: value)
     }
 
     private func optionalText(_ value: Binding<String?>) -> Binding<String> {

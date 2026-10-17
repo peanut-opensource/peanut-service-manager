@@ -10,7 +10,6 @@ private struct ServiceListEntry: Identifiable {
     var id: UUID { service.id }
     var path: String { "\(project.name) / \(environment.name)" }
 }
-
 private struct ServiceGroupOption: Identifiable {
     let group: ServiceGroup
     let path: String
@@ -343,12 +342,4 @@ private struct ServiceOverviewCard: View {
             .clipShape(Capsule())
             .lineLimit(1)
     }
-}
-
-private extension ManagerStyle {
-    static let success = Color(red: 0.16, green: 0.58, blue: 0.43)
-    static let warning = Color(red: 0.78, green: 0.49, blue: 0.16)
-    static let danger = Color(red: 0.78, green: 0.27, blue: 0.31)
-    static let muted = Color.secondary
-    static let ink = Color(red: 0.22, green: 0.27, blue: 0.36)
 }

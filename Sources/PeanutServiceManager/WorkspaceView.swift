@@ -674,12 +674,22 @@ private struct ProjectEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(isNew ? "新建项目" : "编辑项目").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
-            Form { TextField("项目名称", text: $draft.name).textFieldStyle(.roundedBorder) }
-                .padding(.horizontal, 14)
+            ManagerEditorHeader(
+                title: isNew ? "新建项目" : "编辑项目",
+                subtitle: "为服务配置归属项目",
+                icon: "folder.fill"
+            )
+            ScrollView {
+                ManagerFormCard("项目信息", subtitle: "项目名称会显示在工作区和服务列表中。", icon: "folder") {
+                    ManagerTextField(title: "项目名称", placeholder: "例如 Peanut Admin", text: $draft.name)
+                }
+                .padding(20)
+            }
+            .background(ManagerStyle.canvas)
             editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { onSave(draft) }
         }
-        .frame(width: 420, height: 190)
+        .frame(width: 500, height: 270)
+        .background(ManagerStyle.canvas)
     }
 }
 
@@ -699,36 +709,78 @@ private struct EnvironmentEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(isNew ? "新建环境" : "编辑环境").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
-            Form {
-                Section("环境") { TextField("环境名称", text: $draft.name) }
-                Section {
-                    Text("分组只把当前环境中的服务组成集合，用于服务列表筛选和批量启停；不会复制服务或改变项目、环境归属。一个服务可以加入多个分组。")
-                        .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                    ForEach(draft.groups) { group in
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack {
-                                TextField("分组名称", text: groupName(group.id))
-                                Button(role: .destructive) { draft.groups.removeAll { $0.id == group.id } } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                            ForEach(services) { service in
-                                Toggle(service.name, isOn: groupMembership(groupID: group.id, serviceID: service.id))
-                                    .toggleStyle(.checkbox)
-                            }
-                            if services.isEmpty { Text("保存环境后添加服务，即可管理分组成员。").font(.caption).foregroundColor(.secondary) }
-                        }
-                        .padding(.vertical, 3)
+            ManagerEditorHeader(
+                title: isNew ? "新建环境" : "编辑环境",
+                subtitle: "环境用于区分同一项目的开发、测试或生产配置",
+                icon: "square.stack.3d.up.fill"
+            )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ManagerFormCard("环境信息", subtitle: "环境属于当前项目。", icon: "square.stack.3d.up") {
+                        ManagerTextField(title: "环境名称", placeholder: "例如 开发环境", text: $draft.name)
                     }
-                    Button("添加分组") { draft.groups.append(ServiceGroup(name: "新分组")) }
-                } header: { Text("服务分组") }
+
+                    ManagerFormCard("服务分组", subtitle: "分组只用于筛选和批量操作；服务仍属于原项目与环境，一个服务可以加入多个分组。", icon: "person.3") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if draft.groups.isEmpty {
+                                Label("还没有分组。可以按用途创建，例如“后端”或“前端”。", systemImage: "info.circle")
+                                    .font(.callout).foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            ForEach(draft.groups) { group in
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(alignment: .center, spacing: 10) {
+                                        ManagerTextField(title: "分组名称", placeholder: "例如 后端服务", text: groupName(group.id))
+                                        Button(role: .destructive) { draft.groups.removeAll { $0.id == group.id } } label: {
+                                            Image(systemName: "trash")
+                                                .frame(width: 34, height: 34)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .help("删除此分组，不会删除其中的服务")
+                                        .padding(.top, 22)
+                                    }
+                                    if services.isEmpty {
+                                        Text("添加服务后，可以在这里选择分组成员。")
+                                            .font(.caption).foregroundColor(.secondary)
+                                    } else {
+                                        VStack(spacing: 0) {
+                                            ForEach(services) { service in
+                                                Toggle(service.name, isOn: groupMembership(groupID: group.id, serviceID: service.id))
+                                                    .toggleStyle(.checkbox)
+                                                    .padding(.vertical, 7)
+                                                if service.id != services.last?.id { Divider() }
+                                            }
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .background(ManagerStyle.canvas)
+                                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                    }
+                                }
+                                .padding(13)
+                                .background(ManagerStyle.canvas)
+                                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                            }
+                            Button {
+                                draft.groups.append(ServiceGroup(name: "新分组"))
+                            } label: {
+                                Label("添加分组", systemImage: "plus")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .padding(18)
             }
-            .padding(.horizontal, 14)
+            .background(ManagerStyle.canvas)
             editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { onSave(draft) }
         }
-        .frame(minWidth: 520, minHeight: 430)
+        .frame(width: 620, height: editorHeight)
+        .background(ManagerStyle.canvas)
+    }
+
+    private var editorHeight: CGFloat {
+        let contentHeight = 440 + CGFloat(draft.groups.count) * CGFloat(services.count > 0 ? 110 : 78)
+        return max(420, min(contentHeight, (NSScreen.main?.visibleFrame.height ?? 720) - 80))
     }
 
     private func groupName(_ id: UUID) -> Binding<String> {
@@ -771,25 +823,19 @@ private struct ServiceEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(isNew ? "新建服务" : "编辑服务").font(.system(.title3, design: .rounded).weight(.bold))
-                    Text("配置运行方式、访问入口和服务分组信息").font(.caption).foregroundColor(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(ManagerStyle.card)
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+            ManagerEditorHeader(
+                title: isNew ? "新建服务" : "编辑服务",
+                subtitle: "配置启动方式、访问入口和运行环境",
+                icon: "gearshape.2.fill"
+            )
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    ServiceEditorSection("启动配置", subtitle: "设置服务启动时执行的命令和本机运行环境。") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            TextField("服务名称", text: $draft.name).textFieldStyle(.roundedBorder)
-                            TextField("工作目录", text: $draft.workingDirectory).textFieldStyle(.roundedBorder)
-                            TextField("启动命令", text: $draft.command).textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: 14) {
+                    ManagerFormCard("启动配置", subtitle: "管理器会进入工作目录，再按下方命令启动服务。", icon: "terminal.fill") {
+                        VStack(alignment: .leading, spacing: 13) {
+                            ManagerTextField(title: "服务名称", placeholder: "例如 API 服务", text: $draft.name)
+                            ManagerTextField(title: "工作目录", placeholder: "/项目/所在目录", hint: "服务启动前切换到此目录。", text: $draft.workingDirectory)
+                            ManagerTextField(title: "启动命令", placeholder: "例如 php artisan serve", hint: "只填写命令本身；后续参数放到“启动参数”栏。", text: $draft.command)
                             Picker("本机运行时", selection: $draft.runtimeResourceID) {
                                 Text("使用当前环境").tag(Optional<UUID>.none)
                                 ForEach(runtimeResources) { resource in
@@ -797,38 +843,81 @@ private struct ServiceEditor: View {
                                 }
                             }
                             .help("仅显示已绑定到当前项目环境的 PHP 与 Node.js 运行时")
-                            Toggle("随管理器启动", isOn: $draft.startsWithManager)
+                            Toggle(isOn: $draft.startsWithManager) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("随管理器启动").font(.system(.callout, design: .rounded).weight(.semibold))
+                                    Text("打开花生服务管理器时自动启动此服务。")
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
                         }
                     }
 
-                    ServiceEditorSection("访问入口", subtitle: "用于列表展示和快速识别，不会自动配置 DNS、代理或修改启动命令。") {
+                    ManagerFormCard("访问入口", subtitle: "仅作为本机备注展示，不会配置 DNS、代理或端口转发。", icon: "globe") {
                         HStack(spacing: 10) {
-                            TextField("域名或主机名", text: $domainText).textFieldStyle(.roundedBorder)
-                            TextField("端口", text: $portText)
-                                .textFieldStyle(.roundedBorder)
+                            ManagerTextField(title: "域名或主机名", placeholder: "api.example.test", text: $domainText)
+                            ManagerTextField(title: "端口", placeholder: "8080", hint: "可选", text: $portText)
                                 .frame(width: 120)
                                 .onChange(of: portText) { value in portText = String(value.filter(\.isNumber).prefix(5)) }
                         }
                         if !validPort { Text("端口范围为 1–65535。").font(.caption).foregroundColor(.red) }
                     }
 
-                    ServiceEditorSection("启动参数与说明", subtitle: "参数逐行输入；说明仅用于记录，不会传给服务进程。") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            LabeledTextEditor(title: "启动参数", hint: "每行填写一个参数，空行会忽略。", placeholder: "例如：--port\n8080", text: $argumentsText, height: 90)
-                            LabeledTextEditor(title: "服务说明", hint: "记录此服务的用途或启动注意事项。", placeholder: "输入服务说明…", text: $draft.description, height: 72)
+                    ManagerFormCard("启动参数（可选）", subtitle: "只填写启动命令后面的内容；不要把完整命令写在这里。每行会作为一个独立参数传入。", icon: "text.alignleft") {
+                        HStack(alignment: .top, spacing: 12) {
+                            LabeledTextEditor(
+                                title: "命令参数",
+                                hint: "一行一个参数；空行忽略。",
+                                placeholder: "--host\n0.0.0.0\n--port\n8000",
+                                text: $argumentsText,
+                                height: 142
+                            )
+                            .frame(maxWidth: .infinity)
+
+                            VStack(alignment: .leading, spacing: 9) {
+                                Label("填写示例", systemImage: "lightbulb")
+                                    .font(.system(.callout, design: .rounded).weight(.semibold))
+                                    .foregroundColor(ManagerStyle.accent)
+                                Text("启动命令")
+                                    .font(.caption).foregroundColor(.secondary)
+                                Text("php artisan serve")
+                                    .font(.system(.caption, design: .monospaced).weight(.medium))
+                                    .textSelection(.enabled)
+                                Divider()
+                                Text("下面四行分别作为四个参数传入：")
+                                    .font(.caption).foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("--host\n0.0.0.0\n--port\n8000")
+                                    .font(.system(.caption, design: .monospaced).weight(.medium))
+                                    .textSelection(.enabled)
+                                Divider()
+                                Text("组合后的完整启动命令")
+                                    .font(.caption).foregroundColor(.secondary)
+                                Text("php artisan serve --host 0.0.0.0 --port 8000")
+                                    .font(.system(.caption, design: .monospaced).weight(.medium))
+                                    .textSelection(.enabled)
+                            }
+                            .frame(width: 190, alignment: .leading)
+                            .padding(12)
+                            .background(ManagerStyle.canvas)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                     }
 
-                    ServiceEditorSection("环境变量", subtitle: "仅影响此服务及其子进程；每行一项，格式为 KEY=VALUE。") {
-                        LabeledTextEditor(title: "环境变量", hint: "只在保存配置后应用。", placeholder: "例如：APP_ENV=development\nPORT=8080", text: $environmentText, height: 110)
+                    ManagerFormCard("服务说明", subtitle: "仅供你和协作者阅读，不会传给服务进程。", icon: "text.quote") {
+                        LabeledTextEditor(title: "用途或备注", hint: "例如：本地 API；需先启动数据库。", placeholder: "记录服务用途、启动注意事项或其他说明…", text: $draft.description, height: 82)
+                    }
+
+                    ManagerFormCard("环境变量（可选）", subtitle: "仅影响此服务及其子进程；每行一项，格式为 KEY=VALUE。", icon: "curlybraces") {
+                        LabeledTextEditor(title: "变量列表", hint: "例如开发环境可设 APP_ENV=development。", placeholder: "APP_ENV=development\nPORT=8080", text: $environmentText, height: 116)
                     }
                 }
-                .padding(16)
+                .padding(18)
             }
             .frame(maxHeight: .infinity)
             .background(ManagerStyle.canvas)
 
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
             editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort) {
                 draft.arguments = argumentsText.split(separator: "\n").map(String.init)
                 let domain = domainText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -845,7 +934,8 @@ private struct ServiceEditor: View {
                 onSave(draft)
             }
         }
-        .frame(width: 680, height: editorHeight)
+        .frame(width: 760, height: editorHeight)
+        .background(ManagerStyle.canvas)
     }
 
     private var editorHeight: CGFloat {
@@ -892,34 +982,9 @@ private struct LabeledTextEditor: View {
             .frame(height: height)
         }
         .padding(10)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.55))
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(ManagerStyle.fieldBorder, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-    }
-}
-
-private struct ServiceEditorSection<Content: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let content: Content
-
-    init(_ title: String, subtitle: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(.headline, design: .rounded))
-                Text(subtitle).font(.caption).foregroundColor(.secondary)
-            }
-            content
-        }
-        .padding(14)
-        .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 }
 
@@ -929,21 +994,17 @@ private func editorButtons(cancel: @escaping () -> Void, canSave: Bool = true, a
         Spacer()
         Button("取消", action: cancel)
             .keyboardShortcut(.cancelAction)
+            .buttonStyle(.bordered)
         Button("保存", action: action)
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .tint(ManagerStyle.accent)
             .disabled(!canSave)
     }
-    .padding(14)
-}
-
-enum ManagerStyle {
-    static let accent = Color(red: 0.31, green: 0.43, blue: 0.82)
-    static let canvas = Color(NSColor.controlBackgroundColor)
-    static let panel = Color(NSColor.windowBackgroundColor)
-    static let selection = accent.opacity(0.12)
-    static let card = Color(NSColor.textBackgroundColor)
+    .padding(.horizontal, 18)
+    .padding(.vertical, 13)
+    .background(ManagerStyle.card)
+    .overlay(alignment: .top) { Rectangle().fill(ManagerStyle.cardBorder).frame(height: 1) }
 }
 
 private struct MetricPill: View {

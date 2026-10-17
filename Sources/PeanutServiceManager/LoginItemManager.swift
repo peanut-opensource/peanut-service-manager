@@ -132,8 +132,7 @@ struct SettingsView: View {
                     settingsCard("密码保护", subtitle: "只加密资源密码", icon: "lock.shield", color: Color(red: 0.23, green: 0.61, blue: 0.50)) {
                         Text("资源密码在本机单独加密保存；本机使用时可解密。加密 key 以明文保存在本机配置中。")
                             .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                        TextField("本机加密 key", text: $credentialKey)
-                            .textFieldStyle(.roundedBorder)
+                        ManagerTextField(title: "本机加密 key", placeholder: "例如 123456", text: $credentialKey)
                         Button("保存并重新加密已登记密码", action: saveCredentialKey)
                             .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
                             .disabled(credentialKey.isEmpty)
