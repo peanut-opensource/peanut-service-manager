@@ -3,7 +3,7 @@ import Foundation
 
 /// Stores only encrypted resource secrets in the local application-support folder.
 public struct CredentialVault {
-    private struct StoreFile: Codable {
+    struct StoreFile: Codable, Equatable {
         var formatVersion = 1
         var encryptionKey: String
         var secrets: [String: Data] = [:]
@@ -14,19 +14,19 @@ public struct CredentialVault {
     public enum VaultError: Error, LocalizedError {
         case invalidCredentialReference
         case bindingMismatch
-        case missingCredential(String)
         case credentialAlreadyExists
         case invalidEncryptionKey
         case unsupportedStoreVersion
+        case configurationMissingCredentials
 
         public var errorDescription: String? {
             switch self {
             case .invalidCredentialReference: return "资源没有有效的凭据引用。"
             case .bindingMismatch: return "读取密码时必须匹配资源、项目和环境绑定。"
-            case .missingCredential: return "登记的资源密码不存在；如果这是旧版本配置，请在设置中迁移旧密码。"
             case .credentialAlreadyExists: return "该资源密码已存在，请使用更新操作修改。"
             case .invalidEncryptionKey: return "加密 key 不能为空。"
             case .unsupportedStoreVersion: return "本机密码文件版本不受支持，原文件已保留。"
+            case .configurationMissingCredentials: return "配置文件缺少已登记资源对应的加密密码。"
             }
         }
     }
@@ -34,6 +34,21 @@ public struct CredentialVault {
     public func encryptionKey() throws -> String {
         try loadStore().encryptionKey
     }
+
+    func exportedConfiguration() throws -> StoreFile { try loadStore() }
+
+    func validate(_ configuration: StoreFile, credentialReferences: Set<String>) throws {
+        guard configuration.formatVersion == 1 else { throw VaultError.unsupportedStoreVersion }
+        guard !configuration.encryptionKey.isEmpty else { throw VaultError.invalidEncryptionKey }
+        guard credentialReferences.isSubset(of: Set(configuration.secrets.keys)) else {
+            throw VaultError.configurationMissingCredentials
+        }
+        for encrypted in configuration.secrets.values {
+            _ = try WorkspaceCipher.decryptCredential(encrypted, key: configuration.encryptionKey)
+        }
+    }
+
+    func replaceConfiguration(with configuration: StoreFile) throws { try save(configuration) }
 
     /// The key itself is intentionally stored as readable local configuration.
     public func setEncryptionKey(_ newKey: String) throws {
@@ -46,35 +61,6 @@ public struct CredentialVault {
             next.secrets[reference] = try WorkspaceCipher.encryptCredential(plaintext, key: newKey)
         }
         try save(next)
-    }
-
-    func exportSecrets(for workspace: Workspace) throws -> [String: Data] {
-        var result: [String: Data] = [:]
-        for reference in Set(workspace.resources.compactMap(\.credentialReference)) {
-            guard let secret = try read(reference: reference) else { throw VaultError.missingCredential(reference) }
-            result[reference] = secret
-        }
-        return result
-    }
-
-    func snapshot(references: Set<String>) throws -> [String: Data] {
-        var result: [String: Data] = [:]
-        for reference in references {
-            if let value = try read(reference: reference) { result[reference] = value }
-        }
-        return result
-    }
-
-    func restore(_ snapshot: [String: Data], references: Set<String>) throws {
-        var store = try loadStore()
-        for reference in references {
-            if let value = snapshot[reference] {
-                store.secrets[reference] = try WorkspaceCipher.encryptCredential(value, key: store.encryptionKey)
-            } else {
-                store.secrets.removeValue(forKey: reference)
-            }
-        }
-        try save(store)
     }
 
     public func add(_ secret: Data, for resource: ResourceRecord) throws {

@@ -2,20 +2,12 @@ import Combine
 import Foundation
 import PeanutServiceIPC
 
-private struct EncryptedWorkspaceArchive: Codable {
-    var formatVersion = 1
-    var workspace: Workspace
-    var credentials: [String: Data]
-}
-
-private enum WorkspaceArchiveError: LocalizedError {
-    case unsupportedVersion, missingCredentials, importAndRollbackFailed
+private enum ConfigurationImportError: LocalizedError {
+    case rollbackFailed
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedVersion: return "备份版本不受支持。"
-        case .missingCredentials: return "备份缺少资源凭据，未导入任何内容。"
-        case .importAndRollbackFailed: return "导入失败，且无法完整恢复导入前的密码文件；请保留当前本机数据并检查磁盘空间。"
+        case .rollbackFailed: return "配置导入失败，且无法恢复原密码文件；请保留当前本机数据并检查磁盘空间。"
         }
     }
 }
@@ -55,26 +47,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func encryptedExport(passphrase: String) throws -> Data {
-        let vault = CredentialVault()
-        let archive = EncryptedWorkspaceArchive(workspace: workspace, credentials: try vault.exportSecrets(for: workspace))
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try WorkspaceCipher.encryptExport(encoder.encode(archive), passphrase: passphrase)
+    func configurationExport() throws -> Data {
+        try LocalConfigurationFile(workspace: workspace, credentials: CredentialVault().exportedConfiguration()).encoded()
     }
 
-    func importEncryptedArchive(_ data: Data, passphrase: String) throws {
-        let plaintext = try WorkspaceCipher.decryptExport(data, passphrase: passphrase)
-        let archive = try JSONDecoder().decode(EncryptedWorkspaceArchive.self, from: plaintext)
-        guard archive.formatVersion == 1 else { throw WorkspaceArchiveError.unsupportedVersion }
-        let importedReferences = Set(archive.workspace.resources.compactMap(\.credentialReference))
-        guard importedReferences.isSubset(of: Set(archive.credentials.keys)) else { throw WorkspaceArchiveError.missingCredentials }
-        let references = Set(workspace.resources.compactMap(\.credentialReference)).union(importedReferences)
+    func importConfiguration(_ data: Data) throws {
+        let imported = try LocalConfigurationFile.decode(data)
         let vault = CredentialVault()
-        let snapshot = try vault.snapshot(references: references)
+        let snapshot = try vault.exportedConfiguration()
         do {
-            try vault.restore(archive.credentials, references: references)
-            try store.replace(with: archive.workspace)
+            try vault.replaceConfiguration(with: imported.credentials)
+            try store.replace(with: imported.workspace)
             workspace = store.workspace
             selectedProjectID = nil
             selectedEnvironmentID = nil
@@ -82,8 +65,8 @@ final class AppModel: ObservableObject {
             selectedResourceID = nil
             errorMessage = nil
         } catch {
-            do { try vault.restore(snapshot, references: references) }
-            catch { throw WorkspaceArchiveError.importAndRollbackFailed }
+            do { try vault.replaceConfiguration(with: snapshot) }
+            catch { throw ConfigurationImportError.rollbackFailed }
             throw error
         }
     }

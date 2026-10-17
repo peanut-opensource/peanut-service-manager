@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 
 @main
 struct PeanutServiceManagerApp: App {
@@ -45,6 +46,8 @@ struct PeanutServiceManagerApp: App {
 
 final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandlerRef: EventHandlerRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -61,6 +64,12 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
+        registerGlobalShortcut()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
+        if let hotKeyHandlerRef { RemoveEventHandler(hotKeyHandlerRef) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -70,9 +79,39 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    @objc private func showMainWindow() {
+    @objc fileprivate func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.windows.first?.makeKeyAndOrderFront(nil)
+    }
+
+    private func registerGlobalShortcut() {
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let installStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData in
+                guard let userData else { return OSStatus(eventNotHandledErr) }
+                Unmanaged<ManagerAppDelegate>.fromOpaque(userData).takeUnretainedValue().showMainWindow()
+                return noErr
+            },
+            1,
+            &eventType,
+            UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            &hotKeyHandlerRef
+        )
+        guard installStatus == noErr else { return }
+        let shortcutID = EventHotKeyID(signature: OSType(0x50534D31), id: 1)
+        let registerStatus = RegisterEventHotKey(
+            UInt32(kVK_ANSI_Y),
+            UInt32(optionKey),
+            shortcutID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        if registerStatus != noErr, let hotKeyHandlerRef {
+            RemoveEventHandler(hotKeyHandlerRef)
+            self.hotKeyHandlerRef = nil
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

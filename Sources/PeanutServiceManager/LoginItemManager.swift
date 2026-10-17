@@ -94,11 +94,6 @@ private enum LoginItemError: LocalizedError {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var loginEnabled = LoginItemManager().isEnabled
-    @State private var exportPassphrase = ""
-    @State private var exportConfirmation = ""
-    @State private var importPassphrase = ""
-    @State private var importFile: URL?
-    @State private var showImportConfirmation = false
     @State private var credentialKey = ""
 
     var body: some View {
@@ -143,7 +138,7 @@ struct SettingsView: View {
 
             GroupBox("本机密码加密") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("普通登记信息保存在本机配置文件中；资源密码单独加密。默认 key 为 123456，以明文保存在本机，可查看、复制和自行设置。")
+                    Text("资源密码使用 AES-GCM 加密（不是简单混淆）；读取密码时，应用再用本机 key 解密。默认 key 为 123456，以明文保存在本机，可查看、复制和自行设置。")
                         .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                     TextField("本机密码加密 key", text: $credentialKey)
                     Button("保存并重新加密密码", action: saveCredentialKey)
@@ -153,22 +148,12 @@ struct SettingsView: View {
                 .padding(.vertical, 6)
             }
 
-            GroupBox("加密配置备份") {
+            GroupBox("配置文件") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("导出文件包含项目配置和资源密码，并由独立备份口令加密。请妥善保存备份口令。")
+                    Text("导出或导入一份 JSON 配置文件。项目和资源登记信息按原格式保存；资源密码以 AES-GCM 加密，明文 key 会一并保存在文件中。导入时会校验文件结构和密码密文，再直接替换当前配置。")
                         .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                    SecureField("备份口令（至少 10 个字符）", text: $exportPassphrase)
-                    SecureField("再次输入备份口令", text: $exportConfirmation)
-                    Button("导出加密配置…", action: exportArchive)
-                        .disabled(exportPassphrase.count < 10 || exportPassphrase != exportConfirmation)
-                    Divider()
-                    SecureField("导入口令", text: $importPassphrase)
-                    HStack {
-                        Button("选择备份文件…", action: chooseImportFile)
-                        if let importFile { Text(importFile.lastPathComponent).font(.caption).foregroundColor(.secondary).lineLimit(1) }
-                    }
-                    Button("导入并替换当前配置…") { showImportConfirmation = true }
-                        .disabled(importFile == nil || importPassphrase.isEmpty)
+                    Button("导出配置文件…", action: exportConfiguration)
+                    Button("导入并替换配置文件…", action: chooseImportFile)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
@@ -178,12 +163,6 @@ struct SettingsView: View {
         .padding(28)
         .background(ManagerStyle.panel)
         .onAppear(perform: loadCredentialKey)
-        .alert("替换当前配置？", isPresented: $showImportConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("替换并导入", role: .destructive, action: importArchive)
-        } message: {
-            Text("将用所选加密备份替换当前项目、服务、资源、绑定和凭据。当前配置无法通过此操作自动合并。")
-        }
     }
 
     private func loadCredentialKey() {
@@ -199,34 +178,27 @@ struct SettingsView: View {
         } catch { model.errorMessage = error.localizedDescription }
     }
 
-    private func exportArchive() {
+    private func exportConfiguration() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "psmbackup") ?? .data]
-        panel.nameFieldStringValue = "Peanut-Service-Manager.psmbackup"
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "Peanut-Service-Manager.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            let data = try model.encryptedExport(passphrase: exportPassphrase)
+            let data = try model.configurationExport()
             try WorkspaceCipher.writeSecurely(data, to: url)
-            exportPassphrase = ""
-            exportConfirmation = ""
             model.errorMessage = nil
         } catch { model.errorMessage = error.localizedDescription }
     }
 
     private func chooseImportFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "psmbackup") ?? .data]
+        panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK else { return }
-        importFile = panel.url
-    }
-
-    private func importArchive() {
-        guard let importFile else { return }
+        guard let url = panel.url else { return }
         do {
-            try model.importEncryptedArchive(Data(contentsOf: importFile), passphrase: importPassphrase)
-            self.importFile = nil
-            importPassphrase = ""
+            try model.importConfiguration(Data(contentsOf: url))
+            credentialKey = try CredentialVault().encryptionKey()
         } catch { model.errorMessage = error.localizedDescription }
     }
 }
