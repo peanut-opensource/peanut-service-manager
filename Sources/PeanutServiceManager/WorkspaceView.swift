@@ -7,6 +7,7 @@ struct WorkspaceView: View {
     @State private var selectedGroupFilter: ServiceGroupFilter = .all
     @State private var editor: WorkspaceEditorPresentation?
     @State private var activeTab = 0
+    @State private var perspective: WorkspacePerspective = .project
     @State private var pendingEnvironmentRemoval: EnvironmentRemovalTarget?
 
     private var project: Project? {
@@ -63,8 +64,13 @@ struct WorkspaceView: View {
             workspaceHeader
             Divider().opacity(0.55)
         HSplitView {
-            projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 180)
-            environmentColumn.frame(minWidth: 140, idealWidth: 170, maxWidth: 195)
+            if perspective == .project {
+                projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 180)
+                environmentColumn.frame(minWidth: 140, idealWidth: 170, maxWidth: 195)
+            } else {
+                sharedEnvironmentColumn.frame(minWidth: 150, idealWidth: 180, maxWidth: 205)
+                environmentProjectsColumn.frame(minWidth: 150, idealWidth: 185, maxWidth: 215)
+            }
             if let environment {
                 serviceWorkspace(environment)
                     .frame(minWidth: 600, idealWidth: 850, maxWidth: .infinity)
@@ -109,9 +115,106 @@ struct WorkspaceView: View {
 
     private var workspaceHeader: some View {
         ManagerPageHeader(title: "工作区", subtitle: "按项目、环境和服务浏览本机配置", icon: "square.grid.2x2.fill") {
+            Picker("浏览视角", selection: $perspective) {
+                Text("项目视角").tag(WorkspacePerspective.project)
+                Text("环境视角").tag(WorkspacePerspective.environment)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 170)
             MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
             MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
         }
+    }
+
+    private var sharedEnvironmentColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            columnHeader("环境", count: model.workspace.environments.count) {
+                guard let project = project ?? uniqueProjects.first else { return }
+                editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
+            }
+            List {
+                ForEach(model.workspace.environments.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { item in
+                    let linkedProjects = uniqueProjects.filter { project in project.environments.contains { $0.id == item.id } }
+                    Button {
+                        selectSharedEnvironment(item.id)
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "square.stack.3d.up.fill")
+                                .foregroundColor(model.selectedEnvironmentID == item.id ? ManagerStyle.accent : .secondary)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                                Text("关联 \(linkedProjects.count) 个项目")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 5).padding(.horizontal, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(model.selectedEnvironmentID == item.id ? ManagerStyle.selection : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .overlay { if model.workspace.environments.isEmpty { emptyMessage("先创建一个项目环境") } }
+        }
+        .background(ManagerStyle.canvas)
+    }
+
+    private var environmentProjectsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("使用项目").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
+                Text("\(projectsForSelectedEnvironment.count)").font(.caption2.weight(.semibold)).foregroundColor(.secondary)
+                Spacer()
+            }.padding(.horizontal, 14).padding(.vertical, 11)
+            List {
+                ForEach(projectsForSelectedEnvironment) { item in
+                    let target = item.environments.first { $0.id == model.selectedEnvironmentID }
+                    Button {
+                        guard let target else { return }
+                        model.selectedProjectID = item.id
+                        model.selectedEnvironmentID = target.id
+                        model.selectedServiceID = nil
+                        selectedServiceIDs.removeAll()
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(model.selectedProjectID == item.id ? ManagerStyle.accent : .secondary)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                                Text("\(target?.services.count ?? 0) 個服務 · \(target?.groups.count ?? 0) 個分組")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 5).padding(.horizontal, 6).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(model.selectedProjectID == item.id ? ManagerStyle.selection : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .overlay { if model.selectedEnvironmentID == nil { emptyMessage("先选择一个环境") } else if projectsForSelectedEnvironment.isEmpty { emptyMessage("没有关联该环境的项目") } }
+        }
+        .background(ManagerStyle.canvas)
+    }
+
+    private var projectsForSelectedEnvironment: [Project] {
+        guard let id = model.selectedEnvironmentID else { return [] }
+        return uniqueProjects.filter { $0.environments.contains { $0.id == id } }
+    }
+
+    private func selectSharedEnvironment(_ id: UUID) {
+        model.selectedEnvironmentID = id
+        if !projectsForSelectedEnvironment.contains(where: { $0.id == model.selectedProjectID }),
+           let project = projectsForSelectedEnvironment.first {
+            model.selectedProjectID = project.id
+        }
+        model.selectedServiceID = nil
+        selectedServiceIDs.removeAll()
     }
 
     private var projectColumn: some View {
@@ -893,6 +996,11 @@ struct WorkspaceView: View {
     private var errorBinding: Binding<ErrorAlert?> {
         Binding(get: { model.errorMessage.map(ErrorAlert.init) }, set: { _ in model.errorMessage = nil })
     }
+}
+
+private enum WorkspacePerspective: Hashable {
+    case project
+    case environment
 }
 
 private enum ServiceGroupFilter: Hashable {
