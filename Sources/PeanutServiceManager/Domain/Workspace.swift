@@ -2,8 +2,34 @@ import Foundation
 
 struct Workspace: Codable, Equatable {
     var projects: [Project] = []
+    var environments: [WorkspaceEnvironment] = []
     var resources: [ResourceRecord] = []
     var bindings: [ProjectEnvironmentBinding] = []
+
+    private enum CodingKeys: String, CodingKey { case projects, environments, resources, bindings }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projects = try container.decodeIfPresent([Project].self, forKey: .projects) ?? []
+        resources = try container.decodeIfPresent([ResourceRecord].self, forKey: .resources) ?? []
+        bindings = try container.decodeIfPresent([ProjectEnvironmentBinding].self, forKey: .bindings) ?? []
+        if let catalog = try container.decodeIfPresent([WorkspaceEnvironment].self, forKey: .environments) {
+            environments = catalog
+        } else {
+            var seen = Set<UUID>()
+            environments = projects.flatMap(\.environments).compactMap { projectEnvironment in
+                guard seen.insert(projectEnvironment.id).inserted else { return nil }
+                return WorkspaceEnvironment(id: projectEnvironment.id, name: projectEnvironment.name)
+            }
+        }
+    }
+}
+
+struct WorkspaceEnvironment: Codable, Identifiable, Equatable {
+    var id: UUID = UUID()
+    var name: String
 }
 
 struct Project: Codable, Identifiable, Equatable {

@@ -28,11 +28,14 @@ struct LocalConfigurationFile: Codable {
 
     private func validateWorkspace() throws {
         let projectIDs = workspace.projects.map(\.id)
-        let environmentIDs = workspace.projects.flatMap(\.environments).map(\.id)
+        let environmentIDs = workspace.environments.map(\.id)
+        let projectEnvironmentIDs = workspace.projects.flatMap(\.environments).map(\.id)
         let serviceIDs = workspace.projects.flatMap(\.environments).flatMap(\.services).map(\.id)
         let resources = workspace.resources
         let resourceIDs = resources.map(\.id)
         guard Self.hasUniqueValues(projectIDs), Self.hasUniqueValues(environmentIDs),
+              workspace.projects.allSatisfy({ Self.hasUniqueValues($0.environments.map(\.id)) }),
+              projectEnvironmentIDs.allSatisfy(Set(environmentIDs).contains),
               Self.hasUniqueValues(serviceIDs), Self.hasUniqueValues(resourceIDs) else {
             throw LocalConfigurationError.invalidWorkspace
         }

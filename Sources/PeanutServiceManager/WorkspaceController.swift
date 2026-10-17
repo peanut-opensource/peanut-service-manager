@@ -86,6 +86,7 @@ final class AppModel: ObservableObject {
         let environment = ProjectEnvironment(name: name)
         update { workspace in
             guard let index = workspace.projects.firstIndex(where: { $0.id == projectID }) else { return }
+            workspace.environments.append(WorkspaceEnvironment(id: environment.id, name: name))
             workspace.projects[index].environments.append(environment)
         }
         selectedEnvironmentID = environment.id
@@ -447,7 +448,9 @@ final class AppModel: ObservableObject {
         update { workspace in
             let environmentIDs = Set(workspace.projects.first(where: { $0.id == projectID })?.environments.map(\.id) ?? [])
             workspace.projects.removeAll { $0.id == projectID }
-            workspace.bindings.removeAll { $0.projectID == projectID || environmentIDs.contains($0.environmentID) }
+            workspace.bindings.removeAll { $0.projectID == projectID }
+            let stillUsed = Set(workspace.projects.flatMap(\.environments).map(\.id))
+            workspace.environments.removeAll { environmentIDs.contains($0.id) && !stillUsed.contains($0.id) }
         }
         if selectedProjectID == projectID {
             selectedProjectID = nil
@@ -466,6 +469,8 @@ final class AppModel: ObservableObject {
             guard let index = workspace.projects.firstIndex(where: { $0.id == projectID }) else { return }
             workspace.projects[index].environments.removeAll { $0.id == environmentID }
             workspace.bindings.removeAll { $0.projectID == projectID && $0.environmentID == environmentID }
+            let stillUsed = workspace.projects.contains { project in project.environments.contains { $0.id == environmentID } }
+            if !stillUsed { workspace.environments.removeAll { $0.id == environmentID } }
         }
         if selectedEnvironmentID == environmentID {
             selectedEnvironmentID = nil

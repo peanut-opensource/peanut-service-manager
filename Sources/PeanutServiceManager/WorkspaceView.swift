@@ -7,6 +7,7 @@ struct WorkspaceView: View {
     @State private var selectedGroupFilter: ServiceGroupFilter = .all
     @State private var editor: WorkspaceEditorPresentation?
     @State private var activeTab = 0
+    @State private var pendingEnvironmentRemoval: EnvironmentRemovalTarget?
 
     private var project: Project? {
         model.workspace.projects.first { $0.id == model.selectedProjectID }
@@ -74,14 +75,29 @@ struct WorkspaceView: View {
         }
         }
         .background(ManagerStyle.canvas)
-        .confirmationDialog("服务仍在运行", isPresented: Binding(get: { model.forceStopPromptID != nil }, set: { if !$0 { model.forceStopPromptID = nil } }), titleVisibility: .visible) {
-            Button("强制结束服务进程组", role: .destructive) {
-                if let serviceID = model.forceStopPromptID { model.forceStopAndContinueRestart(serviceID) }
-                model.forceStopPromptID = nil
+        .confirmationDialog(pendingEnvironmentRemoval == nil ? "服务仍在运行" : "从项目移除环境？", isPresented: Binding(
+            get: { model.forceStopPromptID != nil || pendingEnvironmentRemoval != nil },
+            set: { if !$0 { model.forceStopPromptID = nil; pendingEnvironmentRemoval = nil } }
+        ), titleVisibility: .visible) {
+            if let target = pendingEnvironmentRemoval {
+                Button("移除当前项目中的关联", role: .destructive) {
+                    model.removeEnvironment(projectID: target.projectID, environmentID: target.environmentID)
+                    pendingEnvironmentRemoval = nil
+                }
+                Button("取消", role: .cancel) { pendingEnvironmentRemoval = nil }
+            } else {
+                Button("强制结束服务进程组", role: .destructive) {
+                    if let serviceID = model.forceStopPromptID { model.forceStopAndContinueRestart(serviceID) }
+                    model.forceStopPromptID = nil
+                }
+                Button("继续等待", role: .cancel) { model.forceStopPromptID = nil }
             }
-            Button("继续等待", role: .cancel) { model.forceStopPromptID = nil }
         } message: {
-            Text("服务在 10 秒内没有退出。强制结束会向本管理器启动的整个服务进程组发送终止信号。")
+            if pendingEnvironmentRemoval != nil {
+                Text("只移除此项目与环境的关联，并移除此项目在该环境下的服务配置。其他项目仍可使用此环境及其各自的服务配置。")
+            } else {
+                Text("服务在 10 秒内没有退出。强制结束会向本管理器启动的整个服务进程组发送终止信号。")
+            }
         }
         .onAppear {
             model.observeWorkspace()
@@ -144,10 +160,23 @@ struct WorkspaceView: View {
 
     private var environmentColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            columnHeader("环境", count: project?.environments.count ?? 0, enabled: project != nil) {
-                guard let project else { return }
-                editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
+            HStack(spacing: 8) {
+                Text("环境").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
+                Text("\(project?.environments.count ?? 0)").font(.caption2.weight(.semibold)).foregroundColor(.secondary)
+                Spacer()
+                Button { if let project { editor = .associateEnvironments(project.id) } } label: {
+                    Image(systemName: "link").font(.system(size: 11, weight: .bold))
+                }
+                .buttonStyle(.borderless).disabled(project == nil).help("关联已有环境")
+                .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
+                Button {
+                    guard let project else { return }
+                    editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
+                } label: { Image(systemName: "plus").font(.system(size: 11, weight: .bold)) }
+                    .buttonStyle(.borderless).disabled(project == nil).help("新建环境")
+                    .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
             }
+            .padding(.horizontal, 14).padding(.vertical, 11)
             if let project {
                 List {
                     ForEach(uniqueEnvironments(project.environments)) { item in
@@ -177,8 +206,8 @@ struct WorkspaceView: View {
                         .listRowBackground(Color.clear)
                         .contextMenu {
                             Button("编辑环境") { editor = .environment(project.id, item, isNew: false) }
-                            Button("删除环境", role: .destructive) {
-                                model.removeEnvironment(projectID: project.id, environmentID: item.id)
+                            Button("从当前项目移除环境", role: .destructive) {
+                                pendingEnvironmentRemoval = EnvironmentRemovalTarget(projectID: project.id, environmentID: item.id)
                             }
                         }
                     }
@@ -602,6 +631,14 @@ struct WorkspaceView: View {
             ServiceEditor(service: service, groups: groups, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) { edited, groupIDs in
                 saveService(edited, groupIDs: groupIDs, projectID: projectID, environmentID: environmentID)
             }
+        case .associateEnvironments(let projectID):
+            EnvironmentAssociationEditor(
+                projectName: model.workspace.projects.first(where: { $0.id == projectID })?.name ?? "项目",
+                catalog: model.workspace.environments,
+                associatedIDs: Set(model.workspace.projects.first(where: { $0.id == projectID })?.environments.map(\.id) ?? [])
+            ) { selectedIDs in
+                associateEnvironments(selectedIDs, projectID: projectID)
+            }
         }
     }
 
@@ -622,14 +659,37 @@ struct WorkspaceView: View {
             guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }) else { return }
             if let index = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == edited.id }) {
                 workspace.projects[projectIndex].environments[index] = edited
+                if let catalogIndex = workspace.environments.firstIndex(where: { $0.id == edited.id }) {
+                    workspace.environments[catalogIndex].name = edited.name
+                }
+                for projectIndex in workspace.projects.indices {
+                    for environmentIndex in workspace.projects[projectIndex].environments.indices where workspace.projects[projectIndex].environments[environmentIndex].id == edited.id {
+                        workspace.projects[projectIndex].environments[environmentIndex].name = edited.name
+                    }
+                }
             } else {
                 workspace.projects[projectIndex].environments.append(edited)
+                if !workspace.environments.contains(where: { $0.id == edited.id }) {
+                    workspace.environments.append(WorkspaceEnvironment(id: edited.id, name: edited.name))
+                }
             }
         }
         guard model.errorMessage == nil else { return }
         model.selectedProjectID = projectID
         model.selectedEnvironmentID = edited.id
         model.selectedServiceID = nil
+        editor = nil
+    }
+
+    private func associateEnvironments(_ ids: Set<UUID>, projectID: UUID) {
+        model.update { workspace in
+            guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }) else { return }
+            let existing = Set(workspace.projects[projectIndex].environments.map(\.id))
+            for environment in workspace.environments where ids.contains(environment.id) && !existing.contains(environment.id) {
+                workspace.projects[projectIndex].environments.append(ProjectEnvironment(id: environment.id, name: environment.name))
+            }
+        }
+        guard model.errorMessage == nil else { return }
         editor = nil
     }
 
@@ -841,11 +901,17 @@ private enum ServiceGroupFilter: Hashable {
     case group(UUID)
 }
 
+private struct EnvironmentRemovalTarget {
+    let projectID: UUID
+    let environmentID: UUID
+}
+
 private enum WorkspaceEditorPresentation: Identifiable {
     case project(Project, isNew: Bool)
     case environment(UUID, ProjectEnvironment, isNew: Bool)
     case groups(UUID, ProjectEnvironment)
     case service(UUID, UUID, Service, isNew: Bool)
+    case associateEnvironments(UUID)
 
     var id: UUID {
         switch self {
@@ -853,6 +919,7 @@ private enum WorkspaceEditorPresentation: Identifiable {
         case .environment(_, let environment, _): return environment.id
         case .groups(_, let environment): return environment.id
         case .service(_, _, let service, _): return service.id
+        case .associateEnvironments(let projectID): return projectID
         }
     }
 }
@@ -1030,7 +1097,7 @@ private struct EnvironmentEditor: View {
         VStack(spacing: 0) {
             ManagerEditorHeader(
                 title: isNew ? "新建环境" : "编辑环境",
-                subtitle: "环境用于区分同一项目的开发、测试或生产配置",
+                subtitle: "环境可关联多个项目；各项目中的服务配置分别保存",
                 icon: "square.stack.3d.up.fill"
             )
             ScrollView {
@@ -1066,6 +1133,62 @@ private struct EnvironmentEditor: View {
             if included { draft.groups[index].serviceIDs.insert(serviceID) }
             else { draft.groups[index].serviceIDs.remove(serviceID) }
         })
+    }
+}
+
+private struct EnvironmentAssociationEditor: View {
+    @Environment(\.presentationMode) private var presentationMode
+    let projectName: String
+    let catalog: [WorkspaceEnvironment]
+    let associatedIDs: Set<UUID>
+    let onSave: (Set<UUID>) -> Void
+    @State private var selectedIDs: Set<UUID> = []
+
+    private var available: [WorkspaceEnvironment] {
+        catalog.filter { !associatedIDs.contains($0.id) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ManagerEditorHeader(title: "关联已有环境", subtitle: "将共享环境关联到 (projectName)；各项目的服务配置仍各自独立。", icon: "link")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ManagerFormCard("可关联环境", subtitle: "可一次选择多个环境。已关联的环境不会重复显示。", icon: "square.stack.3d.up") {
+                        if available.isEmpty {
+                            Text(catalog.isEmpty ? "还没有可复用的环境。请先新建一个环境。" : "此项目已关联全部环境。")
+                                .font(.callout).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(available.enumerated()), id: \.element.id) { index, environment in
+                                    Toggle(isOn: Binding(
+                                        get: { selectedIDs.contains(environment.id) },
+                                        set: { selected in
+                                            if selected { selectedIDs.insert(environment.id) }
+                                            else { selectedIDs.remove(environment.id) }
+                                        }
+                                    )) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(environment.name).font(.system(.callout, design: .rounded).weight(.semibold))
+                                            Text("共享环境 · ID (environment.id.uuidString.prefix(8))")
+                                                .font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .toggleStyle(.checkbox).padding(.vertical, 9)
+                                    if index < available.count - 1 { Divider() }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(18)
+            }
+            .background(ManagerStyle.canvas)
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !selectedIDs.isEmpty) {
+                onSave(selectedIDs)
+            }
+        }
+        .frame(width: 560, height: 480)
+        .background(ManagerStyle.canvas)
     }
 }
 
