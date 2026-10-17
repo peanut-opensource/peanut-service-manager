@@ -1,0 +1,11 @@
+.DS_Store
+company-rules/
+.env
+.env.*
+!.env.example
+*.log
+.build/
+build/
+dist/
+node_modules/
+DerivedData/
