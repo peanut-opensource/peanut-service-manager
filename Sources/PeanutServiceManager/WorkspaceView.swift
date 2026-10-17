@@ -62,10 +62,10 @@ struct WorkspaceView: View {
             workspaceHeader
             Divider().opacity(0.55)
         HSplitView {
-            projectColumn.frame(minWidth: 145, idealWidth: 180, maxWidth: 250)
-            environmentColumn.frame(minWidth: 155, idealWidth: 185, maxWidth: 250)
-            serviceColumn.frame(minWidth: 215, idealWidth: 270, maxWidth: 420)
-            serviceManagementColumn.frame(minWidth: 270, idealWidth: 340, maxWidth: .infinity)
+            projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 220)
+            environmentColumn.frame(minWidth: 140, idealWidth: 160, maxWidth: 220)
+            serviceColumn.frame(minWidth: 195, idealWidth: 245, maxWidth: 360)
+            serviceManagementColumn.frame(minWidth: 280, idealWidth: 360, maxWidth: .infinity)
             }
         }
         .background(ManagerStyle.canvas)
