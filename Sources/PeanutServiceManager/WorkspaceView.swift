@@ -17,6 +17,15 @@ struct WorkspaceView: View {
     }
 
     var body: some View {
+        TabView {
+            configurationView
+                .tabItem { Label("服务", systemImage: "gearshape.2") }
+            ResourceCatalogView(model: model)
+                .tabItem { Label("资源", systemImage: "externaldrive") }
+        }
+    }
+
+    private var configurationView: some View {
         HStack(spacing: 0) {
             projectColumn
                 .frame(minWidth: 190, idealWidth: 220)

@@ -70,6 +70,17 @@ public enum ResourceType: String, Codable, CaseIterable, Hashable {
     case node
     case other
     case dockerContainer
+
+    public var displayName: String {
+        switch self {
+        case .mysql: return "MySQL"
+        case .redis: return "Redis"
+        case .php: return "PHP"
+        case .node: return "Node.js"
+        case .other: return "其他"
+        case .dockerContainer: return "Docker 容器"
+        }
+    }
 }
 
 /// Associates a reusable resource with one project's environment.

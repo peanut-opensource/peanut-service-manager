@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
     @Published var selectedProjectID: UUID?
     @Published var selectedEnvironmentID: UUID?
     @Published var selectedServiceID: UUID?
+    @Published var selectedResourceID: UUID?
     @Published var errorMessage: String?
 
     private let store: WorkspaceStore
@@ -60,6 +61,39 @@ final class AppModel: ObservableObject {
             guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }),
                   let environmentIndex = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == environmentID }) else { return }
             workspace.projects[projectIndex].environments[environmentIndex].groups.append(group)
+        }
+    }
+
+    func addResource(name: String = "新资源") {
+        let resource = ResourceRecord(name: name, type: .other)
+        update { $0.resources.append(resource) }
+        selectedResourceID = resource.id
+    }
+
+    func removeResource(_ resourceID: UUID) {
+        update { workspace in
+            workspace.resources.removeAll { $0.id == resourceID }
+            workspace.bindings.removeAll { $0.resourceID == resourceID }
+            for projectIndex in workspace.projects.indices {
+                for environmentIndex in workspace.projects[projectIndex].environments.indices {
+                    for serviceIndex in workspace.projects[projectIndex].environments[environmentIndex].services.indices where
+                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID == resourceID {
+                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID = nil
+                    }
+                }
+            }
+        }
+        if selectedResourceID == resourceID { selectedResourceID = nil }
+    }
+
+    func setResourceBinding(_ binding: ProjectEnvironmentBinding, enabled: Bool) {
+        update { workspace in
+            if enabled {
+                guard !workspace.bindings.contains(where: { $0.id == binding.id }) else { return }
+                workspace.bindings.append(binding)
+            } else {
+                workspace.bindings.removeAll { $0.id == binding.id }
+            }
         }
     }
 
