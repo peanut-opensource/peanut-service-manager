@@ -48,7 +48,7 @@ struct ResourceCatalogView: View {
             }
             .padding(.horizontal, 22).padding(.vertical, 16)
             Divider().opacity(0.55)
-            HStack(spacing: 0) {
+            HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
@@ -89,16 +89,16 @@ struct ResourceCatalogView: View {
                     }
                 }
             }
-            .frame(minWidth: 250, idealWidth: 285, maxWidth: 330)
+            .frame(minWidth: 220, idealWidth: 270, maxWidth: 360)
             .background(ManagerStyle.canvas)
-            Divider()
             detail
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                .padding(28)
+                .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+                .padding(18)
                 .background(ManagerStyle.panel)
             }
         }
         .background(ManagerStyle.canvas)
+        .frame(minWidth: 820, minHeight: 580)
         .sheet(isPresented: $isCreatingResource) {
             ResourceEditor(resource: nil) { save($0) }
         }
@@ -120,6 +120,7 @@ struct ResourceCatalogView: View {
 
     @ViewBuilder private var detail: some View {
         if let resource = selectedResource {
+            ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
                     HStack(spacing: 13) {
@@ -145,8 +146,8 @@ struct ResourceCatalogView: View {
                         detailRow("用途", resource.purpose)
                         detailRow("说明", resource.notes)
                         detailRow("本机路径", resource.executablePath)
-                        detailRow("连接", connectionDescription(resource))
-                        detailRow("Docker", dockerDescription(resource))
+                        detailRow("连接信息", connectionDescription(resource))
+                        detailRow("容器信息", dockerDescription(resource))
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
                 if resource.type == .dockerContainer {
@@ -191,7 +192,10 @@ struct ResourceCatalogView: View {
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
-                Spacer()
+            }
+            .frame(maxWidth: 850, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
             }
         } else {
             VStack(spacing: 10) {
@@ -325,17 +329,27 @@ private struct ResourceEditor: View {
     @State private var draft: ResourceRecord
     @State private var secret = ""
     @State private var credentialError: String?
+    private let isNew: Bool
     let onSave: (ResourceRecord) -> Bool
 
     init(resource: ResourceRecord?, onSave: @escaping (ResourceRecord) -> Bool) {
         _draft = State(initialValue: resource ?? ResourceRecord(name: "", type: .mysql))
+        isNew = resource == nil
         self.onSave = onSave
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("资源登记").font(.headline); Spacer() }
-                .padding()
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isNew ? "登记新资源" : "编辑资源").font(.system(.title3, design: .rounded).weight(.bold))
+                    Text("只填写此资源适用的信息，其他字段会随类型调整。")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 18).padding(.top, 16)
+            ScrollView {
             Form {
                 Section(header: Text("基本信息")) {
                     TextField("名称", text: $draft.name)
@@ -345,28 +359,37 @@ private struct ResourceEditor: View {
                     optionalField("用途", value: $draft.purpose)
                     TextField("说明", text: optionalText($draft.notes))
                 }
-                Section(header: Text("本机运行时")) { optionalField("可执行文件路径", value: $draft.executablePath) }
-                Section(header: Text("连接信息")) {
-                    optionalField("Host", value: $draft.host)
-                    TextField("Port", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) }))
-                    optionalField("Database", value: $draft.database)
-                    optionalField("Username", value: $draft.username)
-                    SecureField(draft.credentialReference == nil ? "密码（可选）" : "新密码（留空保留现有凭据）", text: $secret)
-                    if draft.credentialReference != nil {
-                        Label("已有密码已在本机加密保存", systemImage: "lock.fill").font(.caption).foregroundColor(.secondary)
+                if draft.type == .php || draft.type == .node || draft.type == .other {
+                    Section(header: Text("本机运行时")) { optionalField("可执行文件路径", value: $draft.executablePath) }
+                }
+                if draft.type == .mysql || draft.type == .redis || draft.type == .dockerContainer || draft.type == .other {
+                    Section(header: Text("连接信息")) {
+                        optionalField("主机地址", value: $draft.host)
+                        TextField("端口", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) }))
+                        optionalField(draft.type == .redis ? "数据库索引" : "数据库名称", value: $draft.database)
+                        optionalField("用户名", value: $draft.username)
+                        SecureField(draft.credentialReference == nil ? "密码（可选）" : "新密码（留空则保留现有密码）", text: $secret)
+                        if draft.credentialReference != nil {
+                            Label("已有密码已在本机加密保存", systemImage: "lock.fill").font(.caption).foregroundColor(.secondary)
+                        }
                     }
                 }
-                Section(header: Text("Docker 容器")) {
-                    optionalField("Docker context", value: $draft.dockerContext)
-                    optionalField("Container ID", value: $draft.containerID)
-                    optionalField("Container name", value: $draft.containerName)
+                if draft.type == .dockerContainer {
+                    Section(header: Text("容器标识")) {
+                        optionalField("Docker 上下文", value: $draft.dockerContext)
+                        optionalField("容器 ID", value: $draft.containerID)
+                        optionalField("容器名称", value: $draft.containerName)
+                    }
                 }
                 if let credentialError = credentialError {
                     Text(credentialError).font(.caption).foregroundColor(.red)
                 }
             }
-            HStack { Spacer(); Button("取消") { presentationMode.wrappedValue.dismiss() }; Button("保存") { save() }.keyboardShortcut(.defaultAction).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-                .padding()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            }
+            HStack { Spacer(); Button("取消") { presentationMode.wrappedValue.dismiss() }; Button("保存") { save() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).tint(ManagerStyle.accent).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                .padding(14)
         }
         .frame(minWidth: 520, minHeight: 580)
     }

@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var processSnapshots: [UUID: SupervisorServiceSnapshot] = [:]
     @Published var processLogs: [UUID: String] = [:]
+    @Published var serviceErrors: [UUID: String] = [:]
     @Published var forceStopPromptID: UUID?
     private var pendingRestarts: [UUID: ServiceTarget] = [:]
     private var restartChecksRemaining: [UUID: Int] = [:]
@@ -29,6 +30,7 @@ final class AppModel: ObservableObject {
     private let store: WorkspaceStore
     private var supervisor: SupervisorClient?
     private var observationTimer: Timer?
+    private var observedServiceID: UUID?
     private var logSequences: [UUID: UInt64] = [:]
     private var didCheckStartupServices = false
 
@@ -146,20 +148,22 @@ final class AppModel: ObservableObject {
 
     func startService(projectID: UUID, environmentID: UUID, serviceID: UUID) {
         guard let service = workspace.projects.first(where: { $0.id == projectID })?.environments.first(where: { $0.id == environmentID })?.services.first(where: { $0.id == serviceID }) else { return }
+        serviceErrors[serviceID] = nil
+        processSnapshots[serviceID] = SupervisorServiceSnapshot(id: serviceID, projectID: projectID, environmentID: environmentID, name: service.name, state: .starting)
         var launchEnvironment = service.environment
         if let runtimeID = service.runtimeResourceID {
             guard let resource = workspace.resources.first(where: { $0.id == runtimeID }),
                   workspace.bindings.contains(where: { $0.projectID == projectID && $0.environmentID == environmentID && $0.resourceID == runtimeID }) else {
-                errorMessage = "所选运行时不存在或未绑定到此项目环境。"
+                reportServiceFailure(serviceID, message: "所选运行时不存在或未绑定到此项目环境。")
                 return
             }
             guard let path = resource.executablePath, FileManager.default.isExecutableFile(atPath: path) else {
-                errorMessage = "所选运行时路径不存在或不可执行：\(resource.executablePath ?? "未设置")"
+                reportServiceFailure(serviceID, message: "所选运行时路径不存在或不可执行：\(resource.executablePath ?? "未设置")")
                 return
             }
             let applicableTypes: Set<ResourceType> = [.php, .node]
             guard applicableTypes.contains(resource.type) else {
-                errorMessage = "所选资源不是可用于服务启动的 PHP 或 Node.js 运行时。"
+                reportServiceFailure(serviceID, message: "所选资源不是可用于服务启动的 PHP 或 Node.js 运行时。")
                 return
             }
             let currentPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -169,9 +173,9 @@ final class AppModel: ObservableObject {
             let client = try supervisorClient()
             let request = ServiceLaunchRequest(serviceID: service.id, projectID: projectID, environmentID: environmentID, name: service.name, workingDirectory: service.workingDirectory, command: service.command, arguments: service.arguments, environment: launchEnvironment)
             client.request(.start(request)) { [weak self] result in
-                Task { @MainActor in self?.handle(result) }
+                Task { @MainActor in self?.handle(result, serviceID: serviceID) }
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { reportServiceFailure(serviceID, message: error.localizedDescription) }
     }
 
     /// Batch operations use stable service IDs and continue independently when one request fails.
@@ -281,6 +285,26 @@ final class AppModel: ObservableObject {
         refreshServiceStates(completion: nil)
     }
 
+    func observeWorkspace() {
+        observationTimer?.invalidate()
+        refreshServiceStates()
+        if let observedServiceID { refreshServiceLogs(serviceID: observedServiceID) }
+        observationTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshServiceStates()
+                if let serviceID = self.observedServiceID { self.refreshServiceLogs(serviceID: serviceID) }
+            }
+        }
+        if let observationTimer { RunLoop.main.add(observationTimer, forMode: .common) }
+    }
+
+    func stopObservingWorkspace() {
+        observationTimer?.invalidate()
+        observationTimer = nil
+        observedServiceID = nil
+    }
+
     private func refreshServiceStates(completion: (() -> Void)?) {
         do {
             try supervisorClient().request(.list) { [weak self] result in
@@ -295,20 +319,11 @@ final class AppModel: ObservableObject {
     }
 
     func observeService(_ serviceID: UUID?) {
-        observationTimer?.invalidate()
-        observationTimer = nil
+        observedServiceID = serviceID
         guard let serviceID else { return }
         do { _ = try supervisorClient() }
         catch { errorMessage = error.localizedDescription; return }
-        refreshServiceStates()
         refreshServiceLogs(serviceID: serviceID)
-        observationTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshServiceStates()
-                self?.refreshServiceLogs(serviceID: serviceID)
-            }
-        }
-        if let observationTimer { RunLoop.main.add(observationTimer, forMode: .common) }
     }
 
     func refreshServiceLogs(serviceID: UUID) {
@@ -339,13 +354,38 @@ final class AppModel: ObservableObject {
         return client
     }
 
-    private func handle(_ result: Result<SupervisorResult, SupervisorClientError>) {
+    private func handle(_ result: Result<SupervisorResult, SupervisorClientError>, serviceID: UUID? = nil) {
         switch result {
-        case .failure(let error): errorMessage = error.localizedDescription
-        case .success(.accepted(let snapshot)): processSnapshots[snapshot.id] = snapshot
-        case .success(.failure(_, let message)): errorMessage = message
+        case .failure(let error):
+            errorMessage = error.localizedDescription
+            if let serviceID { reportServiceFailure(serviceID, message: error.localizedDescription, showAlert: false) }
+        case .success(.accepted(let snapshot)):
+            processSnapshots[snapshot.id] = snapshot
+            serviceErrors[snapshot.id] = nil
+        case .success(.failure(_, let message)):
+            errorMessage = message
+            if let serviceID { reportServiceFailure(serviceID, message: message, showAlert: false) }
         case .success(.services(let snapshots)): processSnapshots = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0) })
         case .success(.logs): break
+        }
+    }
+
+    private func reportServiceFailure(_ serviceID: UUID, message: String, showAlert: Bool = true) {
+        serviceErrors[serviceID] = message
+        if showAlert { errorMessage = message }
+        for project in workspace.projects {
+            for environment in project.environments {
+                guard let service = environment.services.first(where: { $0.id == serviceID }) else { continue }
+                processSnapshots[serviceID] = SupervisorServiceSnapshot(
+                    id: serviceID,
+                    projectID: project.id,
+                    environmentID: environment.id,
+                    name: service.name,
+                    state: .failed,
+                    message: message
+                )
+                return
+            }
         }
     }
 

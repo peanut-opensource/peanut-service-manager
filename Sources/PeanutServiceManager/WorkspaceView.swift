@@ -29,12 +29,11 @@ struct WorkspaceView: View {
                 .tabItem { Label("设置", systemImage: "slider.horizontal.3") }
         }
         .accentColor(ManagerStyle.accent)
-        .frame(minWidth: 1000, minHeight: 640)
+        .frame(minWidth: 820, minHeight: 560)
         .alert(item: errorBinding) { message in
             Alert(title: Text("无法执行操作"), message: Text(message.message), dismissButton: .default(Text("好")))
         }
         .onAppear {
-            model.refreshServiceStates()
             model.startServicesMarkedForManagerLaunch()
         }
     }
@@ -43,12 +42,11 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             workspaceHeader
             Divider().opacity(0.55)
-            HStack(spacing: 0) {
-                projectColumn.frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
-                Divider()
-                environmentColumn.frame(minWidth: 205, idealWidth: 225, maxWidth: 270)
-                Divider()
-                serviceColumn.frame(minWidth: 470, maxWidth: .infinity)
+        HSplitView {
+            projectColumn.frame(minWidth: 145, idealWidth: 180, maxWidth: 250)
+            environmentColumn.frame(minWidth: 155, idealWidth: 185, maxWidth: 250)
+            serviceColumn.frame(minWidth: 215, idealWidth: 270, maxWidth: 420)
+            serviceManagementColumn.frame(minWidth: 270, idealWidth: 340, maxWidth: .infinity)
             }
         }
         .background(ManagerStyle.canvas)
@@ -64,8 +62,12 @@ struct WorkspaceView: View {
         } message: {
             Text("服务在 10 秒内没有退出。强制结束会向本管理器启动的整个服务进程组发送终止信号。")
         }
+        .onAppear {
+            model.observeWorkspace()
+            model.observeService(model.selectedServiceID)
+        }
         .onChange(of: model.selectedServiceID) { model.observeService($0) }
-        .onDisappear { model.observeService(nil) }
+        .onDisappear { model.stopObservingWorkspace() }
     }
 
     private var workspaceHeader: some View {
@@ -92,7 +94,7 @@ struct WorkspaceView: View {
     private var projectColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
             columnHeader("项目", count: uniqueProjects.count) {
-                editor = .project(Project(name: ""))
+                editor = .project(Project(name: ""), isNew: true)
             }
             List {
                 ForEach(uniqueProjects) { item in
@@ -111,7 +113,7 @@ struct WorkspaceView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        Button { editor = .project(item) } label: { Image(systemName: "pencil") }
+                        Button { editor = .project(item, isNew: false) } label: { Image(systemName: "pencil") }
                             .buttonStyle(.borderless)
                             .help("编辑项目")
                     }
@@ -121,7 +123,7 @@ struct WorkspaceView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .listRowBackground(Color.clear)
                     .contextMenu {
-                        Button("编辑项目") { editor = .project(item) }
+                        Button("编辑项目") { editor = .project(item, isNew: false) }
                         Button("删除项目", role: .destructive) { model.removeProject(item.id) }
                     }
                 }
@@ -137,7 +139,7 @@ struct WorkspaceView: View {
         VStack(alignment: .leading, spacing: 0) {
             columnHeader("环境", count: project?.environments.count ?? 0, enabled: project != nil) {
                 guard let project else { return }
-                editor = .environment(project.id, ProjectEnvironment(name: "开发"))
+                editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
             }
             if let project {
                 List {
@@ -157,7 +159,7 @@ struct WorkspaceView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            Button { editor = .environment(project.id, item) } label: { Image(systemName: "pencil") }
+                            Button { editor = .environment(project.id, item, isNew: false) } label: { Image(systemName: "pencil") }
                                 .buttonStyle(.borderless)
                                 .help("编辑环境")
                         }
@@ -167,7 +169,7 @@ struct WorkspaceView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .listRowBackground(Color.clear)
                         .contextMenu {
-                            Button("编辑环境") { editor = .environment(project.id, item) }
+                            Button("编辑环境") { editor = .environment(project.id, item, isNew: false) }
                             Button("删除环境", role: .destructive) {
                                 model.removeEnvironment(projectID: project.id, environmentID: item.id)
                             }
@@ -188,7 +190,7 @@ struct WorkspaceView: View {
         VStack(alignment: .leading, spacing: 0) {
             columnHeader("服务", count: environment?.services.count ?? 0, enabled: environment != nil) {
                 guard let project, let environment else { return }
-                editor = .service(project.id, environment.id, Service(name: "新服务", workingDirectory: NSHomeDirectory(), command: ""))
+                editor = .service(project.id, environment.id, Service(name: "新服务", workingDirectory: NSHomeDirectory(), command: ""), isNew: true)
             }
             if let environment {
                 serviceToolbar(environment)
@@ -202,7 +204,6 @@ struct WorkspaceView: View {
                 .overlay {
                     if environment.services.isEmpty { emptyMessage("此环境还没有服务") }
                 }
-                if let service { selectedServicePanel(service, environment: environment) }
             } else {
                 emptyMessage("先选择一个环境")
             }
@@ -211,24 +212,34 @@ struct WorkspaceView: View {
     }
 
     private func serviceToolbar(_ environment: ProjectEnvironment) -> some View {
-        HStack(spacing: 8) {
-            Text("已选 \(selectedInEnvironment(environment).count)")
-                .font(.caption).foregroundColor(.secondary)
-            Picker("分组", selection: $selectedGroupID) {
-                Text("选择分组").tag(Optional<UUID>.none)
-                ForEach(uniqueGroups(environment.groups)) { group in Text(group.name).tag(Optional(group.id)) }
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Text("已选 \(selectedInEnvironment(environment).count)")
+                    .font(.caption).foregroundColor(.secondary)
+                Spacer(minLength: 2)
+                Picker("分组", selection: $selectedGroupID) {
+                    Text("加入分组…").tag(Optional<UUID>.none)
+                    ForEach(uniqueGroups(environment.groups)) { group in Text(group.name).tag(Optional(group.id)) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 115)
+                Button {
+                    guard let group = environment.groups.first(where: { $0.id == selectedGroupID }) else { return }
+                    selectedServiceIDs.formUnion(group.serviceIDs.intersection(Set(environment.services.map(\.id))))
+                } label: { Image(systemName: "person.2.badge.plus") }
+                    .help("选择该分组中的服务")
+                    .disabled(selectedGroupID == nil)
             }
-            .frame(maxWidth: 145)
-            Button("加入") {
-                guard let group = environment.groups.first(where: { $0.id == selectedGroupID }) else { return }
-                selectedServiceIDs.formUnion(group.serviceIDs.intersection(Set(environment.services.map(\.id))))
+            HStack {
+                Button("全选") { selectedServiceIDs = Set(uniqueServices(environment.services).map(\.id)) }
+                Spacer()
+                Menu("批量操作") {
+                    Button("启动所选") { runBatch(.start, environment: environment) }
+                    Button("停止所选") { runBatch(.stop, environment: environment) }
+                    Button("重启所选") { runBatch(.restart, environment: environment) }
+                }
+                .disabled(selectedInEnvironment(environment).isEmpty)
             }
-            .disabled(selectedGroupID == nil)
-            Spacer()
-            Button("全选") { selectedServiceIDs = Set(uniqueServices(environment.services).map(\.id)) }
-            Button("启动") { runBatch(.start, environment: environment) }.disabled(selectedInEnvironment(environment).isEmpty)
-            Button("停止") { runBatch(.stop, environment: environment) }.disabled(selectedInEnvironment(environment).isEmpty)
-            Button("重启") { runBatch(.restart, environment: environment) }.disabled(selectedInEnvironment(environment).isEmpty)
         }
         .buttonStyle(.borderless)
         .font(.caption)
@@ -256,7 +267,7 @@ struct WorkspaceView: View {
             Toggle("批量选择", isOn: serviceSelection(item.id))
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-            Button { editor = .service(projectID, environmentID, item) } label: { Image(systemName: "pencil") }
+            Button { editor = .service(projectID, environmentID, item, isNew: false) } label: { Image(systemName: "pencil") }
                 .buttonStyle(.borderless)
                 .help("编辑服务配置")
         }
@@ -266,80 +277,142 @@ struct WorkspaceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .listRowBackground(Color.clear)
         .contextMenu {
-            Button("编辑服务") { editor = .service(projectID, environmentID, item) }
+            Button("编辑服务") { editor = .service(projectID, environmentID, item, isNew: false) }
             Button("删除服务", role: .destructive) { model.removeService(projectID: projectID, environmentID: environmentID, serviceID: item.id) }
                 .disabled(isActive(item))
         }
     }
 
-    private func selectedServicePanel(_ service: Service, environment: ProjectEnvironment) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 9) {
-                Label(processStateLabel(service), systemImage: processStateIcon(service))
-                    .font(.system(.callout, design: .rounded).weight(.semibold))
-                    .foregroundColor(processStateColor(service))
-                if let pid = model.processSnapshots[service.id]?.pid {
-                    Text("PID \(pid)").font(.caption).foregroundColor(.secondary)
+    private var serviceManagementColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("服务面板").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
+                    Text(service?.name ?? "选择一项服务")
+                        .font(.system(.title3, design: .rounded).weight(.bold)).lineLimit(1)
                 }
-                Spacer()
-                Button("编辑配置") {
-                    guard let project else { return }
-                    editor = .service(project.id, environment.id, service)
-                }
+                Spacer(minLength: 4)
+                if let service { stateBadge(service) }
             }
-            HStack(spacing: 16) {
-                Label(service.name, systemImage: "gearshape.fill").font(.system(.body, design: .rounded).weight(.bold))
-                Text(service.workingDirectory).font(.caption).foregroundColor(.secondary).lineLimit(1).textSelection(.enabled)
-            }
-            Text(service.command.isEmpty ? "尚未填写启动命令" : service.command)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(service.command.isEmpty ? .secondary : .primary)
-                .lineLimit(2)
-            HStack {
-                Button("启动") {
-                    guard let project else { return }
-                    model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(ManagerStyle.accent)
-                .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
-                Button("停止") { model.stopService(serviceID: service.id) }
-                    .disabled(!isActive(service))
-                Button("重启") {
-                    guard let project else { return }
-                    model.restartService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
-                }
-                .disabled(!isActive(service))
-                Spacer()
-            }
-            if let message = model.processSnapshots[service.id]?.message {
-                Text(message).font(.caption).foregroundColor(.secondary).lineLimit(2)
-            }
-            if let output = model.processLogs[service.id], !output.isEmpty {
-                Text(output.split(separator: "\n").suffix(2).joined(separator: "\n"))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 13)
+            Divider().opacity(0.55)
+            if let service, let environment {
+                serviceManagementContent(service, environment: environment)
+            } else {
+                emptyMessage("选择服务后查看状态、操作和运行输出")
             }
         }
-        .padding(15)
-        .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.primary.opacity(0.06), lineWidth: 1))
-        .padding(.horizontal, 15)
-        .padding(.vertical, 10)
+        .background(ManagerStyle.panel)
+    }
+
+    private func serviceManagementContent(_ service: Service, environment: ProjectEnvironment) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Label("进程", systemImage: "number").font(.caption).foregroundColor(.secondary)
+                    Text(model.processSnapshots[service.id]?.pid.map(String.init) ?? "未启动")
+                        .font(.system(.callout, design: .monospaced).weight(.medium))
+                    Spacer(minLength: 4)
+                    if let code = model.processSnapshots[service.id]?.exitCode {
+                        Text("退出码 \(code)").font(.caption).foregroundColor(code == 0 ? .secondary : .red)
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "folder").foregroundColor(ManagerStyle.accent)
+                    Text(service.workingDirectory).font(.caption).foregroundColor(.secondary)
+                        .lineLimit(3).textSelection(.enabled)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("启动命令").font(.caption).foregroundColor(.secondary)
+                    Text(service.command.isEmpty ? "尚未填写启动命令" : service.command)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(service.command.isEmpty ? .secondary : .primary)
+                        .lineLimit(4).textSelection(.enabled)
+                }
+
+                HStack(spacing: 8) {
+                    Button("启动") {
+                        guard let project else { return }
+                        model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
+                    }
+                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                    .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
+                    Button("停止") { model.stopService(serviceID: service.id) }.disabled(!isActive(service))
+                    Button("重启") {
+                        guard let project else { return }
+                        model.restartService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
+                    }
+                    .disabled(!isActive(service))
+                    Spacer(minLength: 0)
+                    Button("编辑") {
+                        guard let project else { return }
+                        editor = .service(project.id, environment.id, service, isNew: false)
+                    }
+                    .help("编辑服务配置")
+                }
+
+                if let message = model.serviceErrors[service.id] ?? model.processSnapshots[service.id]?.message {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundColor(.red).fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("运行输出", systemImage: "terminal")
+                            .font(.system(.callout, design: .rounded).weight(.semibold))
+                        Spacer()
+                        Button("清空") { model.clearServiceLogs(service.id) }
+                            .font(.caption).disabled((model.processLogs[service.id] ?? "").isEmpty)
+                    }
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            Text(logText(service))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor((model.processLogs[service.id] ?? "").isEmpty ? .secondary : .primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                                .padding(10)
+                                .id("log-bottom")
+                        }
+                        .onAppear { proxy.scrollTo("log-bottom", anchor: .bottom) }
+                        .onChange(of: model.processLogs[service.id] ?? "") { _ in proxy.scrollTo("log-bottom", anchor: .bottom) }
+                    }
+                    .frame(minHeight: 150, maxHeight: 280)
+                    .background(Color.black.opacity(0.035))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+            }
+            .padding(15)
+        }
+    }
+
+    private func stateBadge(_ service: Service) -> some View {
+        Label(processStateLabel(service), systemImage: processStateIcon(service))
+            .font(.system(.caption, design: .rounded).weight(.semibold))
+            .foregroundColor(processStateColor(service))
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(processStateColor(service).opacity(0.1))
+            .clipShape(Capsule())
+    }
+
+    private func logText(_ service: Service) -> String {
+        let output = model.processLogs[service.id] ?? ""
+        return output.isEmpty ? "服务启动后，标准输出和错误输出会显示在这里。\n本窗口不另开终端，也不会保存历史日志。" : output
     }
 
     @ViewBuilder private func editorSheet(_ presentation: WorkspaceEditorPresentation) -> some View {
         switch presentation {
-        case .project(let project):
-            ProjectEditor(project: project) { saveProject($0) }
-        case .environment(let projectID, let environment):
-            EnvironmentEditor(environment: environment, services: project?.environments.first(where: { $0.id == environment.id })?.services ?? []) {
+        case .project(let project, let isNew):
+            ProjectEditor(project: project, isNew: isNew) { saveProject($0) }
+        case .environment(let projectID, let environment, let isNew):
+            EnvironmentEditor(environment: environment, services: project?.environments.first(where: { $0.id == environment.id })?.services ?? [], isNew: isNew) {
                 saveEnvironment($0, projectID: projectID)
             }
-        case .service(let projectID, let environmentID, let service):
-            ServiceEditor(service: service, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID)) {
+        case .service(let projectID, let environmentID, let service, let isNew):
+            ServiceEditor(service: service, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) {
                 saveService($0, projectID: projectID, environmentID: environmentID)
             }
         }
@@ -464,18 +537,22 @@ struct WorkspaceView: View {
     }
 
     private func processStateLabel(_ service: Service) -> String {
+        if model.serviceErrors[service.id] != nil { return "启动失败" }
         guard let snapshot = model.processSnapshots[service.id] else { return "状态未知" }
         switch snapshot.state {
         case .starting: return "启动中"
         case .running: return "运行中"
         case .stopping: return "停止中"
         case .exited: return "已退出"
-        case .failed: return "启动或运行失败"
+        case .failed:
+            if let code = snapshot.exitCode { return "执行失败 · 退出码 \(code)" }
+            return "启动或运行失败"
         case .unknown: return "状态未知"
         }
     }
 
     private func processStateIcon(_ service: Service) -> String {
+        if model.serviceErrors[service.id] != nil { return "exclamationmark.circle.fill" }
         guard let state = model.processSnapshots[service.id]?.state else { return "questionmark.circle" }
         switch state {
         case .starting, .running: return "play.circle.fill"
@@ -487,6 +564,7 @@ struct WorkspaceView: View {
     }
 
     private func processStateColor(_ service: Service) -> Color {
+        if model.serviceErrors[service.id] != nil { return Color(red: 0.78, green: 0.31, blue: 0.33) }
         guard let state = model.processSnapshots[service.id]?.state else { return .secondary }
         switch state {
         case .starting, .running: return Color(red: 0.20, green: 0.59, blue: 0.46)
@@ -519,15 +597,15 @@ struct WorkspaceView: View {
 }
 
 private enum WorkspaceEditorPresentation: Identifiable {
-    case project(Project)
-    case environment(UUID, ProjectEnvironment)
-    case service(UUID, UUID, Service)
+    case project(Project, isNew: Bool)
+    case environment(UUID, ProjectEnvironment, isNew: Bool)
+    case service(UUID, UUID, Service, isNew: Bool)
 
     var id: UUID {
         switch self {
-        case .project(let project): return project.id
-        case .environment(_, let environment): return environment.id
-        case .service(_, _, let service): return service.id
+        case .project(let project, _): return project.id
+        case .environment(_, let environment, _): return environment.id
+        case .service(_, _, let service, _): return service.id
         }
     }
 }
@@ -535,19 +613,21 @@ private enum WorkspaceEditorPresentation: Identifiable {
 private struct ProjectEditor: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: Project
+    let isNew: Bool
     let onSave: (Project) -> Void
 
-    init(project: Project, onSave: @escaping (Project) -> Void) {
+    init(project: Project, isNew: Bool, onSave: @escaping (Project) -> Void) {
         _draft = State(initialValue: project)
+        self.isNew = isNew
         self.onSave = onSave
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(draft.name.isEmpty ? "新建项目" : "编辑项目").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
-            Form { TextField("项目名称", text: $draft.name) }
+            Text(isNew ? "新建项目" : "编辑项目").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
+            Form { TextField("项目名称", text: $draft.name).textFieldStyle(.roundedBorder) }
                 .padding(.horizontal, 14)
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }) { onSave(draft) }
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { onSave(draft) }
         }
         .frame(width: 420, height: 190)
     }
@@ -556,18 +636,20 @@ private struct ProjectEditor: View {
 private struct EnvironmentEditor: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: ProjectEnvironment
+    let isNew: Bool
     let services: [Service]
     let onSave: (ProjectEnvironment) -> Void
 
-    init(environment: ProjectEnvironment, services: [Service], onSave: @escaping (ProjectEnvironment) -> Void) {
+    init(environment: ProjectEnvironment, services: [Service], isNew: Bool, onSave: @escaping (ProjectEnvironment) -> Void) {
         _draft = State(initialValue: environment)
         self.services = services
+        self.isNew = isNew
         self.onSave = onSave
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("环境设置").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
+            Text(isNew ? "新建环境" : "编辑环境").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
             Form {
                 Section("环境") { TextField("环境名称", text: $draft.name) }
                 Section {
@@ -592,7 +674,7 @@ private struct EnvironmentEditor: View {
                 } header: { Text("服务分组") }
             }
             .padding(.horizontal, 14)
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }) { onSave(draft) }
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { onSave(draft) }
         }
         .frame(minWidth: 520, minHeight: 430)
     }
@@ -618,20 +700,22 @@ private struct ServiceEditor: View {
     @State private var draft: Service
     @State private var argumentsText: String
     @State private var environmentText: String
+    let isNew: Bool
     let runtimeResources: [ResourceRecord]
     let onSave: (Service) -> Void
 
-    init(service: Service, runtimeResources: [ResourceRecord], onSave: @escaping (Service) -> Void) {
+    init(service: Service, runtimeResources: [ResourceRecord], isNew: Bool, onSave: @escaping (Service) -> Void) {
         _draft = State(initialValue: service)
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
         self.runtimeResources = runtimeResources
+        self.isNew = isNew
         self.onSave = onSave
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("服务设置").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
+            Text(isNew ? "新建服务" : "编辑服务").font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()
             Form {
                 Section("启动配置") {
                     TextField("服务名称", text: $draft.name)
@@ -663,8 +747,8 @@ private struct ServiceEditor: View {
                 }
             }
             .padding(.horizontal, 14)
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }) {
-                draft.arguments = argumentsText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                draft.arguments = argumentsText.split(separator: "\n").map(String.init)
                 var values: [String: String] = [:]
                 for line in environmentText.split(separator: "\n") {
                     guard let separator = line.firstIndex(of: "=") else { continue }
@@ -681,7 +765,7 @@ private struct ServiceEditor: View {
 }
 
 @ViewBuilder
-private func editorButtons(cancel: @escaping () -> Void, action: @escaping () -> Void) -> some View {
+private func editorButtons(cancel: @escaping () -> Void, canSave: Bool = true, action: @escaping () -> Void) -> some View {
     HStack {
         Spacer()
         Button("取消", action: cancel)
@@ -690,6 +774,7 @@ private func editorButtons(cancel: @escaping () -> Void, action: @escaping () ->
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .tint(ManagerStyle.accent)
+            .disabled(!canSave)
     }
     .padding(14)
 }

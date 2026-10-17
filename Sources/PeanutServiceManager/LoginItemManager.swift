@@ -95,74 +95,91 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var loginEnabled = LoginItemManager().isEnabled
     @State private var credentialKey = ""
+    @State private var feedback: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 14) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(ManagerStyle.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("设置").font(.system(size: 20, weight: .bold, design: .rounded))
-                    Text("管理器启动与本机行为").font(.callout).foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 14) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 46, height: 46)
+                        .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("设置").font(.system(size: 21, weight: .bold, design: .rounded))
+                        Text("应用行为、本机安全与配置文件").font(.callout).foregroundColor(.secondary)
+                    }
                 }
-            }
-            .padding(.bottom, 4)
 
-            GroupBox("登录启动") {
-                Toggle("登录 macOS 后自动打开花生服务管理器", isOn: $loginEnabled)
-                    .onChange(of: loginEnabled) { enabled in
-                        do { try LoginItemManager().setEnabled(enabled) }
-                        catch {
-                            loginEnabled = !enabled
-                            model.errorMessage = error.localizedDescription
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320, maximum: 500), spacing: 16)], alignment: .leading, spacing: 16) {
+                    settingsCard("应用启动", subtitle: "登录与系统兼容性", icon: "power", color: ManagerStyle.accent) {
+                        Toggle("登录 macOS 后自动打开花生服务管理器", isOn: $loginEnabled)
+                            .onChange(of: loginEnabled) { enabled in
+                                do { try LoginItemManager().setEnabled(enabled) }
+                                catch {
+                                    loginEnabled = !enabled
+                                    model.errorMessage = error.localizedDescription
+                                }
+                            }
+                        Divider()
+                        Label("支持 macOS 12 及更新版本", systemImage: "checkmark.circle.fill")
+                        Label("兼容 Intel 与 Apple 芯片", systemImage: "cpu")
+                            .font(.callout).foregroundColor(.secondary)
+                    }
+
+                    settingsCard("密码保护", subtitle: "只加密资源密码", icon: "lock.shield", color: Color(red: 0.23, green: 0.61, blue: 0.50)) {
+                        Text("资源密码在本机单独加密保存；本机使用时可解密。加密 key 以明文保存在本机配置中。")
+                            .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        TextField("本机加密 key", text: $credentialKey)
+                            .textFieldStyle(.roundedBorder)
+                        Button("保存并重新加密已登记密码", action: saveCredentialKey)
+                            .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                            .disabled(credentialKey.isEmpty)
+                    }
+
+                    settingsCard("配置文件", subtitle: "导出备份或替换本机配置", icon: "doc.on.doc", color: Color(red: 0.69, green: 0.48, blue: 0.22)) {
+                        Text("导出的 JSON 包含项目、环境、服务、资源和密码密文。导入前会校验格式与关联，成功后替换当前配置。")
+                            .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        HStack {
+                            Button("导出配置…", action: exportConfiguration).buttonStyle(.bordered)
+                            Button("导入并替换…", action: chooseImportFile).buttonStyle(.bordered)
+                        }
+                        if let feedback {
+                            Label(feedback, systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundColor(Color(red: 0.23, green: 0.61, blue: 0.50))
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
-            }
-
-            GroupBox("兼容性") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("最低支持 macOS 12", systemImage: "checkmark.circle.fill")
-                    Label("应用包含 Intel 与 Apple Silicon 通用二进制", systemImage: "cpu")
                 }
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
             }
-
-            GroupBox("本机密码加密") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("资源密码使用 AES-GCM 加密（不是简单混淆）；读取密码时，应用再用本机 key 解密。默认 key 为 123456，以明文保存在本机，可查看、复制和自行设置。")
-                        .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                    TextField("本机密码加密 key", text: $credentialKey)
-                    Button("保存并重新加密密码", action: saveCredentialKey)
-                        .disabled(credentialKey.isEmpty)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-            }
-
-            GroupBox("配置文件") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("导出或导入一份 JSON 配置文件。项目和资源登记信息按原格式保存；资源密码以 AES-GCM 加密，明文 key 会一并保存在文件中。导入时会校验文件结构和密码密文，再直接替换当前配置。")
-                        .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("导出配置文件…", action: exportConfiguration)
-                    Button("导入并替换配置文件…", action: chooseImportFile)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-            }
-            Spacer()
+            .frame(maxWidth: 1040, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(26)
         }
-        .padding(28)
-        .background(ManagerStyle.panel)
+        .background(ManagerStyle.canvas)
+        .frame(minWidth: 760, minHeight: 580)
         .onAppear(perform: loadCredentialKey)
+    }
+
+    private func settingsCard<Content: View>(_ title: String, subtitle: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundColor(color)
+                    .frame(width: 34, height: 34).background(color.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(.body, design: .rounded).weight(.bold))
+                    Text(subtitle).font(.caption).foregroundColor(.secondary)
+                }
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(ManagerStyle.card)
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.07), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func loadCredentialKey() {
@@ -174,7 +191,7 @@ struct SettingsView: View {
         do {
             try CredentialVault().setEncryptionKey(credentialKey)
             model.errorMessage = nil
-            model.errorMessage = "已保存；本机已登记密码已用新 key 重新加密。"
+            feedback = "已保存，新 key 已用于重新加密已登记密码。"
         } catch { model.errorMessage = error.localizedDescription }
     }
 
@@ -187,6 +204,7 @@ struct SettingsView: View {
             let data = try model.configurationExport()
             try WorkspaceCipher.writeSecurely(data, to: url)
             model.errorMessage = nil
+            feedback = "配置文件已导出。"
         } catch { model.errorMessage = error.localizedDescription }
     }
 
@@ -199,6 +217,7 @@ struct SettingsView: View {
         do {
             try model.importConfiguration(Data(contentsOf: url))
             credentialKey = try CredentialVault().encryptionKey()
+            feedback = "配置已导入并替换本机数据。"
         } catch { model.errorMessage = error.localizedDescription }
     }
 }

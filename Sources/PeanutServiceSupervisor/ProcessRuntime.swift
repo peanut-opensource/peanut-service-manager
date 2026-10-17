@@ -80,9 +80,11 @@ final class ProcessRuntime {
             throw RuntimeError("无法设置服务进程组及其信号行为。")
         }
 
-        // Newline terminates any trailing shell comment; each configured argument remains a
-        // single shell word after quoting, so it cannot inject shell syntax.
-        let script = request.command + "\n" + request.arguments.map(Self.shellQuote).joined(separator: " ")
+        // Keep the configured arguments on the command invocation. A separate
+        // shell line would execute each argument as another command.
+        let argumentSuffix = request.arguments.filter { !$0.isEmpty }.map(Self.shellQuote).joined(separator: " ")
+        let command = request.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let script = argumentSuffix.isEmpty ? command : "\(command) \(argumentSuffix)"
         let argvStrings = ["/bin/sh", "-c", script, request.name]
         let argv = argvStrings.map { strdup($0) } + [nil]
         defer { argv.forEach { if let item = $0 { free(item) } } }
@@ -167,14 +169,12 @@ final class ProcessRuntime {
             if count > 0 {
                 let text = String(decoding: buffer[..<count], as: UTF8.self)
                 lock.lock()
-                if !record.groupGone {
-                    let bytes = text.utf8.count
-                    record.entries.append(makeLog(sequence: record.nextSequence, stream: "combined", text: text))
-                    record.nextSequence &+= 1
-                    record.logBytes += bytes
-                    while record.logBytes > logCapacity, !record.entries.isEmpty {
-                        record.logBytes -= record.entries.removeFirst().text.utf8.count
-                    }
+                let bytes = text.utf8.count
+                record.entries.append(makeLog(sequence: record.nextSequence, stream: "combined", text: text))
+                record.nextSequence &+= 1
+                record.logBytes += bytes
+                while record.logBytes > logCapacity, !record.entries.isEmpty {
+                    record.logBytes -= record.entries.removeFirst().text.utf8.count
                 }
                 lock.unlock()
             } else if count == 0 { break }

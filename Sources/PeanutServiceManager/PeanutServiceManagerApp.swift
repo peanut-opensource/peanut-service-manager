@@ -35,7 +35,7 @@ struct PeanutServiceManagerApp: App {
                     .padding(32)
                 }
             }
-            .frame(minWidth: 900, minHeight: 580)
+            .frame(minWidth: 820, minHeight: 560)
             .background(WindowLifecycleView())
         }
         .commands {
@@ -126,6 +126,19 @@ private final class WindowLifecycleNSView: NSView, NSWindowDelegate {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.delegate = self
+        fitWindowToVisibleScreen()
+    }
+
+    private func fitWindowToVisibleScreen() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+        frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
+        guard frame != window.frame else { return }
+        window.setFrame(frame, display: true, animate: false)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
