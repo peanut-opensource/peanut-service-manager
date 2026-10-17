@@ -6,6 +6,10 @@ struct ResourceCatalogView: View {
     @State private var isCreatingResource = false
     @State private var bindingProjectID: UUID?
     @State private var bindingEnvironmentID: UUID?
+    @State private var pendingDeletion: ResourceRecord?
+    @State private var isCheckingDocker = false
+    @State private var probeMessage: String?
+    @State private var probeSucceeded = false
 
     private var selectedResource: ResourceRecord? {
         model.workspace.resources.first { $0.id == model.selectedResourceID }
@@ -23,10 +27,34 @@ struct ResourceCatalogView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: "externaldrive.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(LinearGradient(colors: [ManagerStyle.accent, Color(red: 0.25, green: 0.64, blue: 0.66)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("资源管理").font(.system(size: 20, weight: .bold, design: .rounded))
+                    Text("登记并关联项目环境所需的本地资源").font(.callout).foregroundColor(.secondary)
+                }
+                Spacer()
+                Text("\(model.workspace.resources.count) 项")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundColor(ManagerStyle.accent)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(ManagerStyle.selection).clipShape(Capsule())
+            }
+            .padding(.horizontal, 22).padding(.vertical, 16)
+            Divider().opacity(0.55)
+            HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("资源").font(.headline)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("资源目录").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
+                        Text("\(model.workspace.resources.count) 项资源").font(.caption2).foregroundColor(.secondary)
+                    }
                     Spacer()
                     Button { isCreatingResource = true } label: { Image(systemName: "plus") }
                         .help("登记资源")
@@ -35,13 +63,25 @@ struct ResourceCatalogView: View {
                 List {
                     ForEach(model.workspace.resources.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { resource in
                         Button { model.selectedResourceID = resource.id } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(resource.name)
-                                Text(resourceSummary(resource)).font(.caption).foregroundColor(.secondary)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 10) {
+                                Image(systemName: resourceIcon(resource.type))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(model.selectedResourceID == resource.id ? ManagerStyle.accent : .secondary)
+                                    .frame(width: 30, height: 30)
+                                    .background(model.selectedResourceID == resource.id ? ManagerStyle.card : Color.primary.opacity(0.045))
+                                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(resource.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                                    Text(resourceSummary(resource)).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 5).padding(.horizontal, 6)
+                            .background(model.selectedResourceID == resource.id ? ManagerStyle.selection : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .listRowBackground(model.selectedResourceID == resource.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                        .listRowBackground(Color.clear)
                         .contextMenu {
                             Button("编辑") { editingResource = resource }
                             Button("删除资源", role: .destructive) { delete(resource) }
@@ -49,12 +89,16 @@ struct ResourceCatalogView: View {
                     }
                 }
             }
-            .frame(minWidth: 220, idealWidth: 270)
+            .frame(minWidth: 250, idealWidth: 285, maxWidth: 330)
+            .background(ManagerStyle.canvas)
             Divider()
             detail
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                .padding(24)
+                .padding(28)
+                .background(ManagerStyle.panel)
+            }
         }
+        .background(ManagerStyle.canvas)
         .sheet(isPresented: $isCreatingResource) {
             ResourceEditor(resource: nil) { save($0) }
         }
@@ -64,16 +108,31 @@ struct ResourceCatalogView: View {
         .alert(item: errorBinding) { message in
             Alert(title: Text("无法保存配置"), message: Text(message.message), dismissButton: .default(Text("好")))
         }
+        .confirmationDialog("删除资源？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }), titleVisibility: .visible) {
+            Button("删除资源及其环境绑定", role: .destructive) { confirmDelete() }
+            Button("取消", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text("资源配置、项目环境绑定及该资源已加密保存的密码将被删除。此操作无法撤销。")
+        }
         .onAppear(perform: chooseInitialTarget)
+        .onChange(of: model.selectedResourceID) { _ in probeMessage = nil }
     }
 
     @ViewBuilder private var detail: some View {
         if let resource = selectedResource {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(resource.name).font(.title2).bold()
-                        Text(resource.type.displayName).foregroundColor(.secondary)
+                    HStack(spacing: 13) {
+                        Image(systemName: resourceIcon(resource.type))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(ManagerStyle.accent)
+                            .frame(width: 48, height: 48)
+                            .background(ManagerStyle.selection)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(resource.name).font(.system(size: 22, weight: .bold, design: .rounded))
+                            Text(resource.type.displayName).font(.callout).foregroundColor(.secondary)
+                        }
                     }
                     Spacer()
                     Button("编辑") { editingResource = resource }
@@ -88,7 +147,26 @@ struct ResourceCatalogView: View {
                         detailRow("本机路径", resource.executablePath)
                         detailRow("连接", connectionDescription(resource))
                         detailRow("Docker", dockerDescription(resource))
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                }
+                if resource.type == .dockerContainer {
+                    GroupBox("容器状态") {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Button {
+                                checkDockerStatus(resource)
+                            } label: {
+                                Label(isCheckingDocker ? "正在检查…" : "检查容器状态", systemImage: "arrow.clockwise")
+                            }
+                            .disabled(isCheckingDocker)
+                            if let probeMessage {
+                                Label(probeMessage, systemImage: probeSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                    .font(.callout)
+                                    .foregroundColor(probeSucceeded ? .green : .orange)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                    }
                 }
                 GroupBox("项目与环境绑定") {
                     VStack(alignment: .leading, spacing: 10) {
@@ -111,15 +189,18 @@ struct ResourceCatalogView: View {
                             Text("选择一个项目和环境后绑定。一个资源可以绑定到多个环境。")
                                 .font(.caption).foregroundColor(.secondary)
                         }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
                 Spacer()
             }
         } else {
             VStack(spacing: 10) {
-                Image(systemName: "externaldrive").font(.largeTitle).foregroundColor(.secondary)
-                Text("选择资源或登记新资源").foregroundColor(.secondary)
+                Image(systemName: "externaldrive.fill").font(.system(size: 34)).foregroundColor(ManagerStyle.accent.opacity(0.65))
+                Text("准备好整理你的本地资源了吗？").font(.system(.title3, design: .rounded).weight(.semibold))
+                Text("选择一项资源查看详情，或登记新资源并关联项目环境。")
+                    .font(.callout).foregroundColor(.secondary).multilineTextAlignment(.center)
                 Button("登记资源") { isCreatingResource = true }
+                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -141,21 +222,30 @@ struct ResourceCatalogView: View {
         Binding(get: { model.errorMessage.map(IdentifiableMessage.init) }, set: { if $0 == nil { model.errorMessage = nil } })
     }
 
-    private func save(_ resource: ResourceRecord) {
+    private func save(_ resource: ResourceRecord) -> Bool {
         model.update { workspace in
             if let index = workspace.resources.firstIndex(where: { $0.id == resource.id }) { workspace.resources[index] = resource }
             else { workspace.resources.append(resource) }
         }
+        guard model.errorMessage == nil else { return false }
         model.selectedResourceID = resource.id
         isCreatingResource = false
         editingResource = nil
+        return true
     }
 
     private func delete(_ resource: ResourceRecord) {
-        model.update { workspace in
-            workspace.resources.removeAll { $0.id == resource.id }
-            workspace.bindings.removeAll { $0.resourceID == resource.id }
-        }
+        pendingDeletion = resource
+    }
+
+    private func confirmDelete() {
+        guard let resource = pendingDeletion else { return }
+        pendingDeletion = nil
+        model.removeResource(resource.id)
+        guard model.errorMessage == nil else { return }
+        do {
+            if resource.credentialReference != nil { try CredentialVault().delete(for: resource) }
+        } catch { model.errorMessage = error.localizedDescription }
         if model.selectedResourceID == resource.id { model.selectedResourceID = nil }
     }
 
@@ -185,6 +275,22 @@ struct ResourceCatalogView: View {
         }
     }
 
+    private func checkDockerStatus(_ resource: ResourceRecord) {
+        isCheckingDocker = true
+        probeMessage = nil
+        Task {
+            do {
+                let status = try await Task.detached(priority: .utility) { try DockerStatusProbe.check(resource) }.value
+                probeSucceeded = true
+                probeMessage = "容器状态：\(status)"
+            } catch {
+                probeSucceeded = false
+                probeMessage = error.localizedDescription
+            }
+            isCheckingDocker = false
+        }
+    }
+
     private func resourceSummary(_ resource: ResourceRecord) -> String {
         [resource.type.displayName, resource.version, resource.host.map { host in resource.port.map { "\(host):\($0)" } ?? host }, resource.containerName].compactMap { $0 }.joined(separator: " · ")
     }
@@ -202,14 +308,26 @@ struct ResourceCatalogView: View {
     private func detailRow(_ title: String, _ value: String?) -> some View {
         Group { if let value = value, !value.isEmpty { HStack(alignment: .firstTextBaseline) { Text(title).foregroundColor(.secondary).frame(width: 86, alignment: .leading); Text(value).textSelection(.enabled) } } }
     }
+
+    private func resourceIcon(_ type: ResourceType) -> String {
+        switch type {
+        case .mysql: return "cylinder.split.1x2.fill"
+        case .redis: return "bolt.horizontal.circle.fill"
+        case .php, .node: return "terminal.fill"
+        case .dockerContainer: return "shippingbox.fill"
+        case .other: return "shippingbox"
+        }
+    }
 }
 
 private struct ResourceEditor: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: ResourceRecord
-    let onSave: (ResourceRecord) -> Void
+    @State private var secret = ""
+    @State private var credentialError: String?
+    let onSave: (ResourceRecord) -> Bool
 
-    init(resource: ResourceRecord?, onSave: @escaping (ResourceRecord) -> Void) {
+    init(resource: ResourceRecord?, onSave: @escaping (ResourceRecord) -> Bool) {
         _draft = State(initialValue: resource ?? ResourceRecord(name: "", type: .mysql))
         self.onSave = onSave
     }
@@ -233,19 +351,49 @@ private struct ResourceEditor: View {
                     TextField("Port", text: Binding(get: { draft.port.map(String.init) ?? "" }, set: { draft.port = Int($0.filter(\.isNumber)) }))
                     optionalField("Database", value: $draft.database)
                     optionalField("Username", value: $draft.username)
+                    SecureField(draft.credentialReference == nil ? "密码（可选）" : "新密码（留空保留现有凭据）", text: $secret)
+                    if draft.credentialReference != nil {
+                        Label("已有密码已在本机加密保存", systemImage: "lock.fill").font(.caption).foregroundColor(.secondary)
+                    }
                 }
                 Section(header: Text("Docker 容器")) {
                     optionalField("Docker context", value: $draft.dockerContext)
                     optionalField("Container ID", value: $draft.containerID)
                     optionalField("Container name", value: $draft.containerName)
                 }
-                Text("凭据将在后续版本通过钥匙串管理。此处不录入密码。")
-                    .font(.caption).foregroundColor(.secondary)
+                if let credentialError = credentialError {
+                    Text(credentialError).font(.caption).foregroundColor(.red)
+                }
             }
-            HStack { Spacer(); Button("取消") { presentationMode.wrappedValue.dismiss() }; Button("保存") { onSave(normalized(draft)); presentationMode.wrappedValue.dismiss() }.keyboardShortcut(.defaultAction).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+            HStack { Spacer(); Button("取消") { presentationMode.wrappedValue.dismiss() }; Button("保存") { save() }.keyboardShortcut(.defaultAction).disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
                 .padding()
         }
         .frame(minWidth: 520, minHeight: 580)
+    }
+
+    private func save() {
+        var resource = normalized(draft)
+        let isNewCredential = !secret.isEmpty && resource.credentialReference == nil
+        do {
+            if !secret.isEmpty {
+                let vault = CredentialVault()
+                if resource.credentialReference == nil {
+                    resource.credentialReference = UUID().uuidString
+                    try vault.add(Data(secret.utf8), for: resource)
+                } else {
+                    try vault.update(Data(secret.utf8), for: resource)
+                }
+            }
+            guard onSave(resource) else {
+                if isNewCredential { try? CredentialVault().delete(for: resource) }
+                credentialError = "无法保存资源配置。请检查上方提示后重试。"
+                return
+            }
+            secret = ""
+            presentationMode.wrappedValue.dismiss()
+        } catch {
+            credentialError = error.localizedDescription
+        }
     }
 
     private func optionalField(_ title: String, value: Binding<String?>) -> some View {

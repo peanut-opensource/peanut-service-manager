@@ -1,5 +1,24 @@
 import Combine
 import Foundation
+import PeanutServiceIPC
+
+private struct EncryptedWorkspaceArchive: Codable {
+    var formatVersion = 1
+    var workspace: Workspace
+    var credentials: [String: Data]
+}
+
+private enum WorkspaceArchiveError: LocalizedError {
+    case unsupportedVersion, missingCredentials, importAndRollbackFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedVersion: return "备份版本不受支持。"
+        case .missingCredentials: return "备份缺少资源凭据，未导入任何内容。"
+        case .importAndRollbackFailed: return "导入失败，且无法完整恢复导入前的密码文件；请保留当前本机数据并检查磁盘空间。"
+        }
+    }
+}
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -9,8 +28,17 @@ final class AppModel: ObservableObject {
     @Published var selectedServiceID: UUID?
     @Published var selectedResourceID: UUID?
     @Published var errorMessage: String?
+    @Published var processSnapshots: [UUID: SupervisorServiceSnapshot] = [:]
+    @Published var processLogs: [UUID: String] = [:]
+    @Published var forceStopPromptID: UUID?
+    private var pendingRestarts: [UUID: ServiceTarget] = [:]
+    private var restartChecksRemaining: [UUID: Int] = [:]
 
     private let store: WorkspaceStore
+    private var supervisor: SupervisorClient?
+    private var observationTimer: Timer?
+    private var logSequences: [UUID: UInt64] = [:]
+    private var didCheckStartupServices = false
 
     init(store: WorkspaceStore) {
         self.store = store
@@ -24,6 +52,39 @@ final class AppModel: ObservableObject {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func encryptedExport(passphrase: String) throws -> Data {
+        let vault = CredentialVault()
+        let archive = EncryptedWorkspaceArchive(workspace: workspace, credentials: try vault.exportSecrets(for: workspace))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try WorkspaceCipher.encryptExport(encoder.encode(archive), passphrase: passphrase)
+    }
+
+    func importEncryptedArchive(_ data: Data, passphrase: String) throws {
+        let plaintext = try WorkspaceCipher.decryptExport(data, passphrase: passphrase)
+        let archive = try JSONDecoder().decode(EncryptedWorkspaceArchive.self, from: plaintext)
+        guard archive.formatVersion == 1 else { throw WorkspaceArchiveError.unsupportedVersion }
+        let importedReferences = Set(archive.workspace.resources.compactMap(\.credentialReference))
+        guard importedReferences.isSubset(of: Set(archive.credentials.keys)) else { throw WorkspaceArchiveError.missingCredentials }
+        let references = Set(workspace.resources.compactMap(\.credentialReference)).union(importedReferences)
+        let vault = CredentialVault()
+        let snapshot = try vault.snapshot(references: references)
+        do {
+            try vault.restore(archive.credentials, references: references)
+            try store.replace(with: archive.workspace)
+            workspace = store.workspace
+            selectedProjectID = nil
+            selectedEnvironmentID = nil
+            selectedServiceID = nil
+            selectedResourceID = nil
+            errorMessage = nil
+        } catch {
+            do { try vault.restore(snapshot, references: references) }
+            catch { throw WorkspaceArchiveError.importAndRollbackFailed }
+            throw error
         }
     }
 
@@ -70,6 +131,241 @@ final class AppModel: ObservableObject {
         selectedResourceID = resource.id
     }
 
+    func startServicesMarkedForManagerLaunch() {
+        guard !didCheckStartupServices else { return }
+        didCheckStartupServices = true
+        let targets = workspace.projects.flatMap { project in
+            project.environments.flatMap { environment in
+                environment.services.filter(\.startsWithManager).map {
+                    ServiceTarget(projectID: project.id, environmentID: environment.id, serviceID: $0.id)
+                }
+            }
+        }
+        guard !targets.isEmpty else { return }
+        do {
+            try supervisorClient().request(.list) { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let running: Set<UUID>
+                    if case .success(.services(let snapshots)) = result {
+                        self.processSnapshots = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0) })
+                        running = Set(snapshots.filter { $0.state == .running || $0.state == .starting || $0.state == .stopping }.map(\.id))
+                    } else {
+                        self.handle(result)
+                        return
+                    }
+                    let pending = targets.filter { !running.contains($0.serviceID) }
+                    self.startServices(pending)
+                }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func startService(projectID: UUID, environmentID: UUID, serviceID: UUID) {
+        guard let service = workspace.projects.first(where: { $0.id == projectID })?.environments.first(where: { $0.id == environmentID })?.services.first(where: { $0.id == serviceID }) else { return }
+        var launchEnvironment = service.environment
+        if let runtimeID = service.runtimeResourceID {
+            guard let resource = workspace.resources.first(where: { $0.id == runtimeID }),
+                  workspace.bindings.contains(where: { $0.projectID == projectID && $0.environmentID == environmentID && $0.resourceID == runtimeID }) else {
+                errorMessage = "所选运行时不存在或未绑定到此项目环境。"
+                return
+            }
+            guard let path = resource.executablePath, FileManager.default.isExecutableFile(atPath: path) else {
+                errorMessage = "所选运行时路径不存在或不可执行：\(resource.executablePath ?? "未设置")"
+                return
+            }
+            let applicableTypes: Set<ResourceType> = [.php, .node]
+            guard applicableTypes.contains(resource.type) else {
+                errorMessage = "所选资源不是可用于服务启动的 PHP 或 Node.js 运行时。"
+                return
+            }
+            let currentPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+            launchEnvironment["PATH"] = URL(fileURLWithPath: path).deletingLastPathComponent().path + ":" + currentPath
+        }
+        do {
+            let client = try supervisorClient()
+            let request = ServiceLaunchRequest(serviceID: service.id, projectID: projectID, environmentID: environmentID, name: service.name, workingDirectory: service.workingDirectory, command: service.command, arguments: service.arguments, environment: launchEnvironment)
+            client.request(.start(request)) { [weak self] result in
+                Task { @MainActor in self?.handle(result) }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Batch operations use stable service IDs and continue independently when one request fails.
+    func startServices(_ targets: [ServiceTarget]) {
+        var seen = Set<UUID>()
+        for target in targets where seen.insert(target.serviceID).inserted {
+            startService(projectID: target.projectID, environmentID: target.environmentID, serviceID: target.serviceID)
+        }
+    }
+
+    func stopServices(_ serviceIDs: [UUID]) {
+        for serviceID in Set(serviceIDs) { stopService(serviceID: serviceID) }
+    }
+
+    func restartService(projectID: UUID, environmentID: UUID, serviceID: UUID) {
+        let state = processSnapshots[serviceID]?.state
+        if state == nil || state == .unknown {
+            do {
+                try supervisorClient().request(.list) { [weak self] result in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.handle(result)
+                        if let snapshot = self.processSnapshots[serviceID],
+                           snapshot.state == .running || snapshot.state == .starting || snapshot.state == .stopping {
+                            self.restartService(projectID: projectID, environmentID: environmentID, serviceID: serviceID)
+                        } else {
+                            self.startService(projectID: projectID, environmentID: environmentID, serviceID: serviceID)
+                        }
+                    }
+                }
+            } catch { errorMessage = error.localizedDescription }
+            return
+        }
+        guard state == .running || state == .starting || state == .stopping else {
+            startService(projectID: projectID, environmentID: environmentID, serviceID: serviceID)
+            return
+        }
+        pendingRestarts[serviceID] = ServiceTarget(projectID: projectID, environmentID: environmentID, serviceID: serviceID)
+        restartChecksRemaining[serviceID] = 40
+        do {
+            try supervisorClient().request(.stop(serviceID: serviceID, force: false)) { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.handle(result)
+                    if case .failure = result { self.cancelRestart(serviceID) }
+                    else { self.scheduleRestartCheck(serviceID) }
+                }
+            }
+        } catch { pendingRestarts.removeValue(forKey: serviceID); errorMessage = error.localizedDescription }
+    }
+
+    func forceStopAndContinueRestart(_ serviceID: UUID) {
+        stopService(serviceID: serviceID, force: true)
+        restartChecksRemaining[serviceID] = 40
+        scheduleRestartCheck(serviceID)
+    }
+
+    private func scheduleRestartCheck(_ serviceID: UUID) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.pendingRestarts[serviceID] != nil else { return }
+            self.refreshServiceStates {
+                guard self.pendingRestarts[serviceID] != nil else { return }
+                if self.processSnapshots[serviceID]?.state == .exited {
+                    self.finishRestart(serviceID)
+                } else {
+                    let remaining = (self.restartChecksRemaining[serviceID] ?? 0) - 1
+                    self.restartChecksRemaining[serviceID] = remaining
+                    if remaining <= 0 { self.forceStopPromptID = serviceID }
+                    else { self.scheduleRestartCheck(serviceID) }
+                }
+            }
+        }
+    }
+
+    private func finishRestart(_ serviceID: UUID) {
+        guard let target = pendingRestarts.removeValue(forKey: serviceID) else { return }
+        restartChecksRemaining.removeValue(forKey: serviceID)
+        startService(projectID: target.projectID, environmentID: target.environmentID, serviceID: target.serviceID)
+    }
+
+    private func cancelRestart(_ serviceID: UUID) {
+        pendingRestarts.removeValue(forKey: serviceID)
+        restartChecksRemaining.removeValue(forKey: serviceID)
+    }
+
+    func stopService(serviceID: UUID, force: Bool = false) {
+        do {
+            try supervisorClient().request(.stop(serviceID: serviceID, force: force)) { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.handle(result)
+                    guard !force else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+                        self?.refreshServiceStates { [weak self] in
+                            guard let self,
+                                  let state = self.processSnapshots[serviceID]?.state,
+                                  state == .running || state == .stopping else { return }
+                            self.forceStopPromptID = serviceID
+                        }
+                    }
+                }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func refreshServiceStates() {
+        refreshServiceStates(completion: nil)
+    }
+
+    private func refreshServiceStates(completion: (() -> Void)?) {
+        do {
+            try supervisorClient().request(.list) { [weak self] result in
+                Task { @MainActor in
+                    if case .success(.services(let snapshots)) = result {
+                        self?.processSnapshots = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0) })
+                    }
+                    completion?()
+                }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func observeService(_ serviceID: UUID?) {
+        observationTimer?.invalidate()
+        observationTimer = nil
+        guard let serviceID else { return }
+        do { _ = try supervisorClient() }
+        catch { errorMessage = error.localizedDescription; return }
+        refreshServiceStates()
+        refreshServiceLogs(serviceID: serviceID)
+        observationTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshServiceStates()
+                self?.refreshServiceLogs(serviceID: serviceID)
+            }
+        }
+        if let observationTimer { RunLoop.main.add(observationTimer, forMode: .common) }
+    }
+
+    func refreshServiceLogs(serviceID: UUID) {
+        do {
+            try supervisorClient().request(.logs(serviceID: serviceID, afterSequence: logSequences[serviceID] ?? 0)) { [weak self] result in
+                guard case .success(.logs(let entries, let nextSequence)) = result else { return }
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.logSequences[serviceID] = max(self.logSequences[serviceID] ?? 0, nextSequence > 0 ? nextSequence - 1 : 0)
+                    guard !entries.isEmpty else { return }
+                    let addition = entries.map(\.text).joined()
+                    var text = (self.processLogs[serviceID] ?? "") + addition
+                    if text.utf8.count > 65_536 { text = String(text.suffix(50_000)) }
+                    self.processLogs[serviceID] = text
+                }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func clearServiceLogs(_ serviceID: UUID) {
+        processLogs[serviceID] = ""
+    }
+
+    private func supervisorClient() throws -> SupervisorClient {
+        if let supervisor { return supervisor }
+        let client = try SupervisorClient()
+        supervisor = client
+        return client
+    }
+
+    private func handle(_ result: Result<SupervisorResult, SupervisorClientError>) {
+        switch result {
+        case .failure(let error): errorMessage = error.localizedDescription
+        case .success(.accepted(let snapshot)): processSnapshots[snapshot.id] = snapshot
+        case .success(.failure(_, let message)): errorMessage = message
+        case .success(.services(let snapshots)): processSnapshots = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0) })
+        case .success(.logs): break
+        }
+    }
+
     func removeResource(_ resourceID: UUID) {
         update { workspace in
             workspace.resources.removeAll { $0.id == resourceID }
@@ -98,6 +394,11 @@ final class AppModel: ObservableObject {
     }
 
     func removeProject(_ projectID: UUID) {
+        let serviceIDs = workspace.projects.first(where: { $0.id == projectID })?.environments.flatMap(\.services).map(\.id) ?? []
+        guard !containsActiveService(serviceIDs) else {
+            errorMessage = "此项目仍有运行中的服务。请先停止这些服务，再删除项目。"
+            return
+        }
         update { workspace in
             let environmentIDs = Set(workspace.projects.first(where: { $0.id == projectID })?.environments.map(\.id) ?? [])
             workspace.projects.removeAll { $0.id == projectID }
@@ -111,6 +412,11 @@ final class AppModel: ObservableObject {
     }
 
     func removeEnvironment(projectID: UUID, environmentID: UUID) {
+        let serviceIDs = workspace.projects.first(where: { $0.id == projectID })?.environments.first(where: { $0.id == environmentID })?.services.map(\.id) ?? []
+        guard !containsActiveService(serviceIDs) else {
+            errorMessage = "此环境仍有运行中的服务。请先停止这些服务，再删除环境。"
+            return
+        }
         update { workspace in
             guard let index = workspace.projects.firstIndex(where: { $0.id == projectID }) else { return }
             workspace.projects[index].environments.removeAll { $0.id == environmentID }
@@ -123,6 +429,10 @@ final class AppModel: ObservableObject {
     }
 
     func removeService(projectID: UUID, environmentID: UUID, serviceID: UUID) {
+        guard !containsActiveService([serviceID]) else {
+            errorMessage = "此服务仍在运行。请先停止服务，再删除配置。"
+            return
+        }
         update { workspace in
             guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }),
                   let environmentIndex = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == environmentID }) else { return }
@@ -141,6 +451,13 @@ final class AppModel: ObservableObject {
             guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }),
                   let environmentIndex = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == environmentID }) else { return }
             workspace.projects[projectIndex].environments[environmentIndex].groups.removeAll { $0.id == groupID }
+        }
+    }
+
+    private func containsActiveService(_ ids: [UUID]) -> Bool {
+        ids.contains { id in
+            guard let state = processSnapshots[id]?.state else { return false }
+            return state == .starting || state == .running || state == .stopping
         }
     }
 }

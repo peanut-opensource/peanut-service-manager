@@ -3,6 +3,8 @@ import SwiftUI
 
 struct WorkspaceView: View {
     @ObservedObject var model: AppModel
+    @State private var selectedServiceIDs: Set<UUID> = []
+    @State private var selectedGroupID: UUID?
 
     private var project: Project? {
         model.workspace.projects.first { $0.id == model.selectedProjectID }
@@ -19,30 +21,70 @@ struct WorkspaceView: View {
     var body: some View {
         TabView {
             configurationView
-                .tabItem { Label("服务", systemImage: "gearshape.2") }
+                .tabItem { Label("工作区", systemImage: "square.grid.2x2.fill") }
             ResourceCatalogView(model: model)
-                .tabItem { Label("资源", systemImage: "externaldrive") }
+                .tabItem { Label("资源", systemImage: "externaldrive.fill") }
+            SettingsView(model: model)
+                .tabItem { Label("设置", systemImage: "slider.horizontal.3") }
+        }
+        .accentColor(ManagerStyle.accent)
+        .alert(item: errorBinding) { message in
+            Alert(title: Text("无法执行操作"), message: Text(message.message), dismissButton: .default(Text("好")))
+        }
+        .onAppear {
+            model.refreshServiceStates()
+            model.startServicesMarkedForManagerLaunch()
         }
     }
 
     private var configurationView: some View {
-        HStack(spacing: 0) {
-            projectColumn
-                .frame(minWidth: 190, idealWidth: 220)
-            Divider()
-            environmentColumn
-                .frame(minWidth: 190, idealWidth: 220)
-            Divider()
-            serviceColumn
-                .frame(minWidth: 210, idealWidth: 250)
-            Divider()
-            detailColumn
-                .frame(minWidth: 330, maxWidth: .infinity)
+        VStack(spacing: 0) {
+            workspaceHeader
+            Divider().opacity(0.55)
+            HStack(spacing: 0) {
+                projectColumn.frame(minWidth: 160, idealWidth: 190)
+                Divider()
+                environmentColumn.frame(minWidth: 165, idealWidth: 195)
+                Divider()
+                serviceColumn.frame(minWidth: 180, idealWidth: 220)
+                Divider()
+                detailColumn.frame(minWidth: 330, maxWidth: .infinity)
+            }
         }
-        .background(Color(NSColor.controlBackgroundColor))
-        .alert(item: errorBinding) { message in
-            Alert(title: Text("无法保存配置"), message: Text(message.message), dismissButton: .default(Text("好")))
+        .background(ManagerStyle.canvas)
+        .confirmationDialog("服务仍在运行", isPresented: Binding(get: { model.forceStopPromptID != nil }, set: { if !$0 { model.forceStopPromptID = nil } }), titleVisibility: .visible) {
+            Button("强制结束服务进程组", role: .destructive) {
+                if let serviceID = model.forceStopPromptID { model.forceStopAndContinueRestart(serviceID) }
+                model.forceStopPromptID = nil
+            }
+            Button("继续等待", role: .cancel) { model.forceStopPromptID = nil }
+        } message: {
+            Text("服务在 10 秒内没有退出。强制结束会向本管理器启动的整个服务进程组发送终止信号。")
         }
+        .onChange(of: model.selectedServiceID) { model.observeService($0) }
+    }
+
+    private var workspaceHeader: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "square.grid.2x2.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("工作区").font(.system(size: 20, weight: .bold, design: .rounded))
+                Text("管理项目环境与本地服务").font(.callout).foregroundColor(.secondary)
+            }
+            Spacer()
+            HStack(spacing: 8) {
+                MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
+                MetricPill(title: "服务", value: model.workspace.projects.flatMap(\.environments).flatMap(\.services).count, icon: "gearshape.2.fill")
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .background(ManagerStyle.canvas)
     }
 
     private var projectColumn: some View {
@@ -54,15 +96,19 @@ struct WorkspaceView: View {
                 ForEach(uniqueProjects) { item in
                     Button(action: { selectProject(item.id) }) {
                         HStack {
-                            Image(systemName: "folder")
+                                Image(systemName: "folder.fill")
+                                    .foregroundColor(model.selectedProjectID == item.id ? ManagerStyle.accent : .secondary)
+                                    .frame(width: 22)
                             Text(item.name).lineLimit(1)
                             Spacer(minLength: 0)
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
-                    .padding(.vertical, 3)
-                    .background(model.selectedProjectID == item.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 6)
+                    .background(model.selectedProjectID == item.id ? ManagerStyle.selection : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .contextMenu {
                         Button("删除项目", role: .destructive) { model.removeProject(item.id) }
                     }
@@ -82,15 +128,19 @@ struct WorkspaceView: View {
                     ForEach(uniqueEnvironments(project.environments)) { item in
                         Button(action: { selectEnvironment(item.id) }) {
                             HStack {
-                                Image(systemName: "square.stack.3d.up")
+                                Image(systemName: "square.stack.3d.up.fill")
+                                    .foregroundColor(model.selectedEnvironmentID == item.id ? ManagerStyle.accent : .secondary)
+                                    .frame(width: 22)
                                 Text(item.name).lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .padding(.vertical, 3)
-                        .background(model.selectedEnvironmentID == item.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 6)
+                        .background(model.selectedEnvironmentID == item.id ? ManagerStyle.selection : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .contextMenu {
                             Button("删除环境", role: .destructive) {
                                 model.removeEnvironment(projectID: project.id, environmentID: item.id)
@@ -112,19 +162,54 @@ struct WorkspaceView: View {
                 model.addService(projectID: projectID, environmentID: environmentID)
             }
             if let environment {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Text("已选 \(selectedServiceIDs.count)").font(.caption).foregroundColor(.secondary)
+                        Spacer(minLength: 0)
+                        Picker("分组", selection: $selectedGroupID) {
+                            Text("选择分组").tag(Optional<UUID>.none)
+                            ForEach(uniqueGroups(environment.groups)) { group in Text(group.name).tag(Optional(group.id)) }
+                        }
+                        .frame(maxWidth: 105)
+                        Button("加入") {
+                            guard let group = environment.groups.first(where: { $0.id == selectedGroupID }) else { return }
+                            selectedServiceIDs.formUnion(group.serviceIDs.intersection(Set(environment.services.map(\.id))))
+                        }
+                        .disabled(selectedGroupID == nil)
+                    }
+                    HStack(spacing: 8) {
+                        Button("全选") { selectedServiceIDs = Set(uniqueServices(environment.services).map(\.id)) }
+                        Spacer(minLength: 0)
+                        Button("启动") { runBatch(.start, environment: environment) }.disabled(selectedServiceIDs.isEmpty)
+                        Button("停止") { runBatch(.stop, environment: environment) }.disabled(selectedServiceIDs.isEmpty)
+                        Button("重启") { runBatch(.restart, environment: environment) }.disabled(selectedServiceIDs.isEmpty)
+                    }
+                }
+                .buttonStyle(.borderless).font(.caption).padding(.horizontal, 12).padding(.bottom, 6)
                 List {
                     ForEach(uniqueServices(environment.services)) { item in
                         Button(action: { model.selectedServiceID = item.id }) {
                             HStack {
-                                Image(systemName: "gearshape")
+                                Image(systemName: selectedServiceIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(selectedServiceIDs.contains(item.id) ? ManagerStyle.accent : .secondary)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedServiceIDs.contains(item.id) { selectedServiceIDs.remove(item.id) }
+                                        else { selectedServiceIDs.insert(item.id) }
+                                    }
+                                Image(systemName: "gearshape.fill")
+                                    .foregroundColor(model.selectedServiceID == item.id ? ManagerStyle.accent : .secondary)
+                                    .frame(width: 22)
                                 Text(item.name).lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .padding(.vertical, 3)
-                        .background(model.selectedServiceID == item.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 6)
+                        .background(model.selectedServiceID == item.id ? ManagerStyle.selection : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .contextMenu {
                             Button("删除服务", role: .destructive) { removeService(item.id) }
                         }
@@ -152,7 +237,8 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .padding(20)
+        .padding(24)
+        .background(ManagerStyle.panel)
     }
 
     private func projectEditor(_ project: Project) -> some View {
@@ -179,30 +265,131 @@ struct WorkspaceView: View {
 
     private func serviceEditor(_ service: Service) -> some View {
         Form {
+            Section(header: Text("进程管理")) {
+                HStack {
+                    Label(processStateLabel(service), systemImage: processStateIcon(service))
+                        .font(.system(.body, design: .rounded).weight(.semibold))
+                        .foregroundColor(processStateColor(service))
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(processStateColor(service).opacity(0.11))
+                        .clipShape(Capsule())
+                    Spacer()
+                    Button("启动") {
+                        guard let projectID = model.selectedProjectID, let environmentID = model.selectedEnvironmentID else { return }
+                        model.startService(projectID: projectID, environmentID: environmentID, serviceID: service.id)
+                    }
+                    .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
+                    .buttonStyle(.borderedProminent)
+                    .tint(ManagerStyle.accent)
+                    Button("停止") { model.stopService(serviceID: service.id) }
+                        .disabled(!isActive(service))
+                        .buttonStyle(.bordered)
+                    Button("重启") {
+                        guard let projectID = model.selectedProjectID, let environmentID = model.selectedEnvironmentID else { return }
+                        model.restartService(projectID: projectID, environmentID: environmentID, serviceID: service.id)
+                    }
+                    .disabled(!isActive(service))
+                    .buttonStyle(.bordered)
+                }
+                if let snapshot = model.processSnapshots[service.id], let pid = snapshot.pid {
+                    Text("PID \(pid)").font(.caption).foregroundColor(.secondary)
+                }
+                if let message = model.processSnapshots[service.id]?.message {
+                    Text(message).font(.caption).foregroundColor(.secondary)
+                }
+            }
             Section(header: Text("服务配置")) {
                 TextField("服务名称", text: serviceBinding(service.id, keyPath: \.name))
                 TextField("工作目录", text: serviceBinding(service.id, keyPath: \.workingDirectory))
                 TextField("启动命令", text: serviceBinding(service.id, keyPath: \.command))
+                Picker("本机运行时", selection: serviceBinding(service.id, keyPath: \.runtimeResourceID)) {
+                    Text("使用当前环境").tag(Optional<UUID>.none)
+                    ForEach(boundRuntimeResources) { resource in
+                        Text("\(resource.name) · \(resource.version ?? resource.type.displayName)").tag(Optional(resource.id))
+                    }
+                }
+                .help("仅显示已绑定到当前项目环境的 PHP 与 Node.js 运行时")
                 VStack(alignment: .leading, spacing: 4) {
                     Text("参数（每行一个）").font(.caption).foregroundColor(.secondary)
-                    TextEditor(text: argumentsBinding(service.id)).frame(minHeight: 70)
+                    TextEditor(text: argumentsBinding(service.id)).frame(height: 72)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("说明").font(.caption).foregroundColor(.secondary)
-                    TextEditor(text: serviceBinding(service.id, keyPath: \.description)).frame(minHeight: 55)
+                    TextEditor(text: serviceBinding(service.id, keyPath: \.description)).frame(height: 56)
                 }
                 Toggle("随管理器启动", isOn: serviceBinding(service.id, keyPath: \.startsWithManager))
             }
             Section(header: Text("环境变量"), footer: Text("每行填写 KEY=VALUE；修改后立即保存。")) {
                 TextEditor(text: environmentVariablesBinding(service.id))
-                    .frame(minHeight: 100)
+                    .frame(height: 100)
+            }
+            Section(header: HStack {
+                Text("近期输出")
+                Spacer()
+                Button("刷新") { model.refreshServiceLogs(serviceID: service.id) }
+                Button("清空视图") { model.clearServiceLogs(service.id) }
+            }, footer: Text("仅保留管理器内存中的近期输出；关闭管理器后不会保存日志。")) {
+                ScrollView {
+                    Text(model.processLogs[service.id].flatMap { $0.isEmpty ? nil : $0 } ?? "服务输出会显示在这里")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(model.processLogs[service.id]?.isEmpty == false ? .primary : .secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(height: 160)
+                .background(ManagerStyle.card)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1))
             }
             if let environment {
                 groupEditor(environment)
             }
-            Section(footer: Text("删除服务只允许用于当前未运行的实例。当前版本尚不管理进程状态，请先确认此服务未运行。")) {
+            Section(footer: Text("运行中的服务不能删除。停止操作只作用于本管理器启动并登记的进程组。")) {
                 Button("删除服务", role: .destructive) { removeService(service.id) }
+                    .disabled(isActive(service))
             }
+        }
+        .onAppear { model.observeService(service.id) }
+        .onDisappear { model.observeService(nil) }
+    }
+
+    private func isActive(_ service: Service) -> Bool {
+        guard let state = model.processSnapshots[service.id]?.state else { return false }
+        return state == .starting || state == .running || state == .stopping
+    }
+
+    private func processStateLabel(_ service: Service) -> String {
+        guard let snapshot = model.processSnapshots[service.id] else { return "状态未知" }
+        switch snapshot.state {
+        case .starting: return "启动中"
+        case .running: return "运行中"
+        case .stopping: return "停止中"
+        case .exited: return "已退出"
+        case .failed: return "启动或运行失败"
+        case .unknown: return "状态未知"
+        }
+    }
+
+    private func processStateIcon(_ service: Service) -> String {
+        guard let state = model.processSnapshots[service.id]?.state else { return "questionmark.circle" }
+        switch state {
+        case .starting, .running: return "play.circle.fill"
+        case .stopping: return "stop.circle"
+        case .exited: return "checkmark.circle"
+        case .failed: return "exclamationmark.circle"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private func processStateColor(_ service: Service) -> Color {
+        guard let state = model.processSnapshots[service.id]?.state else { return .secondary }
+        switch state {
+        case .starting, .running: return Color(red: 0.20, green: 0.59, blue: 0.46)
+        case .stopping: return Color(red: 0.79, green: 0.52, blue: 0.19)
+        case .exited: return .secondary
+        case .failed: return Color(red: 0.78, green: 0.31, blue: 0.33)
+        case .unknown: return .secondary
         }
     }
 
@@ -243,23 +430,34 @@ struct WorkspaceView: View {
 
     private func columnHeader(_ title: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         HStack {
-            Text(title).font(.headline)
+            Text(title).font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
             Spacer()
-            Button(action: action) { Image(systemName: "plus") }
+            Button(action: action) { Image(systemName: "plus").font(.system(size: 11, weight: .bold)) }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(!enabled)
                 .help("添加\(title)")
+                .frame(width: 25, height: 25)
+                .background(ManagerStyle.selection)
+                .clipShape(Circle())
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
     }
 
     private func emptyMessage(_ text: String) -> some View {
-        VStack { Text(text).foregroundColor(.secondary) }
+        VStack(spacing: 9) {
+            Image(systemName: "arrow.left.circle").font(.title2).foregroundColor(ManagerStyle.accent.opacity(0.72))
+            Text(text).font(.callout).foregroundColor(.secondary)
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var uniqueProjects: [Project] { unique(model.workspace.projects) }
+    private var boundRuntimeResources: [ResourceRecord] {
+        guard let projectID = model.selectedProjectID, let environmentID = model.selectedEnvironmentID else { return [] }
+        let boundIDs = Set(model.workspace.bindings.filter { $0.projectID == projectID && $0.environmentID == environmentID }.map(\.resourceID))
+        return model.workspace.resources.filter { boundIDs.contains($0.id) && ($0.type == .php || $0.type == .node) }
+    }
     private func uniqueEnvironments(_ values: [ProjectEnvironment]) -> [ProjectEnvironment] { unique(values) }
     private func uniqueServices(_ values: [Service]) -> [Service] { unique(values) }
     private func uniqueGroups(_ values: [ServiceGroup]) -> [ServiceGroup] { unique(values) }
@@ -381,6 +579,23 @@ struct WorkspaceView: View {
         model.removeService(projectID: projectID, environmentID: environmentID, serviceID: id)
     }
 
+    private enum BatchAction { case start, stop, restart }
+
+    private func runBatch(_ action: BatchAction, environment: ProjectEnvironment) {
+        guard let projectID = model.selectedProjectID else { return }
+        let ids = selectedServiceIDs.intersection(Set(environment.services.map(\.id)))
+        switch action {
+        case .start:
+            model.startServices(ids.map { ServiceTarget(projectID: projectID, environmentID: environment.id, serviceID: $0) })
+        case .stop:
+            model.stopServices(Array(ids))
+        case .restart:
+            for serviceID in ids {
+                model.restartService(projectID: projectID, environmentID: environment.id, serviceID: serviceID)
+            }
+        }
+    }
+
     private func removeGroup(_ environmentID: UUID, groupID: UUID) {
         guard let projectID = model.selectedProjectID else { return }
         model.removeGroup(projectID: projectID, environmentID: environmentID, groupID: groupID)
@@ -400,6 +615,33 @@ struct WorkspaceView: View {
 
     private func groupFallback<Value>(_ keyPath: WritableKeyPath<ServiceGroup, Value>) -> Value {
         ServiceGroup(name: "")[keyPath: keyPath]
+    }
+}
+
+enum ManagerStyle {
+    static let accent = Color(red: 0.31, green: 0.43, blue: 0.82)
+    static let canvas = Color(NSColor.controlBackgroundColor)
+    static let panel = Color(NSColor.windowBackgroundColor)
+    static let selection = accent.opacity(0.12)
+    static let card = Color(NSColor.textBackgroundColor)
+}
+
+private struct MetricPill: View {
+    let title: String
+    let value: Int
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundColor(ManagerStyle.accent)
+            Text("\(value)").font(.system(.callout, design: .rounded).weight(.bold))
+            Text(title).font(.caption).foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(ManagerStyle.card.opacity(0.86))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.primary.opacity(0.06), lineWidth: 1))
     }
 }
 

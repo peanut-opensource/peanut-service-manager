@@ -9,3 +9,8 @@ build/
 dist/
 node_modules/
 DerivedData/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.dSYM/
+*.xcarchive/
