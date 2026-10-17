@@ -28,26 +28,13 @@ struct ResourceCatalogView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                Image(systemName: "externaldrive.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(LinearGradient(colors: [ManagerStyle.accent, Color(red: 0.25, green: 0.64, blue: 0.66)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("资源管理").font(.system(size: 20, weight: .bold, design: .rounded))
-                    Text("登记并关联项目环境所需的本地资源").font(.callout).foregroundColor(.secondary)
-                }
-                Spacer()
+            ManagerPageHeader(title: "资源管理", subtitle: "登记并关联项目环境所需的本地资源", icon: "externaldrive.fill") {
                 Text("\(model.workspace.resources.count) 项")
                     .font(.system(.caption, design: .rounded).weight(.semibold))
                     .foregroundColor(ManagerStyle.accent)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(ManagerStyle.selection).clipShape(Capsule())
             }
-            .padding(.horizontal, 22).padding(.vertical, 16)
-            Divider().opacity(0.55)
             HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
@@ -56,8 +43,8 @@ struct ResourceCatalogView: View {
                         Text("\(model.workspace.resources.count) 项资源").font(.caption2).foregroundColor(.secondary)
                     }
                     Spacer()
-                    Button { isCreatingResource = true } label: { Image(systemName: "plus") }
-                        .help("登记资源")
+                    Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
+                        .buttonStyle(.borderedProminent).tint(ManagerStyle.accent).controlSize(.small)
                 }
                 .padding()
                 List {
@@ -98,7 +85,7 @@ struct ResourceCatalogView: View {
             }
         }
         .background(ManagerStyle.canvas)
-        .frame(minWidth: 820, minHeight: 580)
+        .frame(minWidth: 1100, minHeight: 640)
         .sheet(isPresented: $isCreatingResource) {
             ResourceEditor(resource: nil) { save($0) }
         }
@@ -139,7 +126,7 @@ struct ResourceCatalogView: View {
                     Button("编辑") { editingResource = resource }
                     Button("删除", role: .destructive) { delete(resource) }
                 }
-                GroupBox("资源信息") {
+                ManagerFormCard("资源信息", subtitle: "版本、来源、路径与连接方式", icon: resourceIcon(resource.type)) {
                     VStack(alignment: .leading, spacing: 7) {
                         detailRow("版本", resource.version)
                         detailRow("来源", resource.source)
@@ -151,7 +138,7 @@ struct ResourceCatalogView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
                 if resource.type == .dockerContainer {
-                    GroupBox("容器状态") {
+                    ManagerFormCard("容器状态", subtitle: "读取当前容器运行状态", icon: "shippingbox") {
                         VStack(alignment: .leading, spacing: 9) {
                             Button {
                                 checkDockerStatus(resource)
@@ -169,7 +156,7 @@ struct ResourceCatalogView: View {
                         .padding(.vertical, 6)
                     }
                 }
-                GroupBox("项目与环境绑定") {
+                ManagerFormCard("项目与环境绑定", subtitle: "一个资源可以关联多个项目环境", icon: "link") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Picker("项目 / 环境", selection: bindingTarget) {

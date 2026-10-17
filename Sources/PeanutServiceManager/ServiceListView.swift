@@ -127,25 +127,10 @@ struct ServiceListView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "list.bullet.rectangle.portrait.fill")
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("服务总览").font(.system(size: 20, weight: .bold, design: .rounded))
-                Text("按服务查看运行状态、访问入口和启动配置").font(.callout).foregroundColor(.secondary)
-            }
-            Spacer()
+        ManagerPageHeader(title: "服务总览", subtitle: "按服务查看运行状态、访问入口和启动配置", icon: "list.bullet.rectangle.portrait.fill") {
             overviewMetric(title: "服务", value: entries.count, icon: "server.rack", color: ManagerStyle.accent)
             overviewMetric(title: "运行中", value: runningCount, icon: "checkmark.circle.fill", color: ManagerStyle.success)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 17)
-        .background(ManagerStyle.card)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 1) }
     }
 
     private func overviewMetric(title: String, value: Int, icon: String, color: Color) -> some View {

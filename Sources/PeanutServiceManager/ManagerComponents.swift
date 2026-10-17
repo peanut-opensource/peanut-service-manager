@@ -122,6 +122,47 @@ struct ManagerEditorHeader: View {
     }
 }
 
+struct ManagerPageHeader<Trailing: View>: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    @ViewBuilder let trailing: Trailing
+
+    init(title: String, subtitle: String, icon: String, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 20, weight: .bold, design: .rounded)).foregroundColor(ManagerStyle.ink)
+                Text(subtitle).font(.callout).foregroundColor(.secondary)
+            }
+            Spacer(minLength: 12)
+            trailing
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 15)
+        .background(ManagerStyle.canvas)
+        .overlay(alignment: .bottom) { Rectangle().fill(ManagerStyle.cardBorder).frame(height: 1) }
+    }
+}
+
+extension ManagerPageHeader where Trailing == EmptyView {
+    init(title: String, subtitle: String, icon: String) {
+        self.init(title: title, subtitle: subtitle, icon: icon) { EmptyView() }
+    }
+}
+
 enum ManagerStyle {
     static let accent = Color(red: 0.28, green: 0.42, blue: 0.79)
     static let canvas = Color(NSColor.controlBackgroundColor)

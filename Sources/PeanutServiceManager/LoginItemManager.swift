@@ -100,20 +100,9 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 14) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 46, height: 46)
-                        .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("设置").font(.system(size: 21, weight: .bold, design: .rounded))
-                        Text("应用行为、本机安全与配置文件").font(.callout).foregroundColor(.secondary)
-                    }
-                }
+                ManagerPageHeader(title: "设置", subtitle: "应用行为、本机安全与配置文件", icon: "slider.horizontal.3")
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320, maximum: 500), spacing: 16)], alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 430, maximum: 560), spacing: 16)], alignment: .leading, spacing: 16) {
                     settingsCard("应用启动", subtitle: "登录与系统兼容性", icon: "power", color: ManagerStyle.accent) {
                         Toggle("登录 macOS 后自动打开花生服务管理器", isOn: $loginEnabled)
                             .onChange(of: loginEnabled) { enabled in
@@ -150,6 +139,19 @@ struct SettingsView: View {
                                 .font(.caption).foregroundColor(Color(red: 0.23, green: 0.61, blue: 0.50))
                         }
                     }
+
+                    settingsCard("软件信息", subtitle: "版本、项目仓库与开发团队", icon: "info.circle", color: ManagerStyle.accent) {
+                        infoRow("版本", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")
+                        Divider()
+                        HStack(alignment: .top) {
+                            Text("仓库").foregroundColor(.secondary)
+                            Spacer(minLength: 12)
+                            Link("github.com/peanut-opensource/peanut-service-manager", destination: URL(string: "https://github.com/peanut-opensource/peanut-service-manager")!)
+                                .lineLimit(1).textSelection(.enabled)
+                        }.font(.callout)
+                        Divider()
+                        infoRow("开发团队", "花生科技研发中心")
+                    }
                 }
             }
             .frame(maxWidth: 1040, alignment: .leading)
@@ -157,7 +159,7 @@ struct SettingsView: View {
             .padding(26)
         }
         .background(ManagerStyle.canvas)
-        .frame(minWidth: 760, minHeight: 580)
+        .frame(minWidth: 1100, minHeight: 640)
         .onAppear(perform: loadCredentialKey)
     }
 
@@ -177,8 +179,16 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.07), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).foregroundColor(.secondary)
+            Spacer()
+            Text(value).foregroundColor(ManagerStyle.ink).textSelection(.enabled)
+        }.font(.callout)
     }
 
     private func loadCredentialKey() {

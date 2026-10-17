@@ -92,24 +92,10 @@ struct WorkspaceView: View {
     }
 
     private var workspaceHeader: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "square.grid.2x2.fill")
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(LinearGradient(colors: [ManagerStyle.accent, ManagerStyle.accent.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("工作区").font(.system(size: 20, weight: .bold, design: .rounded))
-                Text("按项目、环境和服务浏览本机配置").font(.callout).foregroundColor(.secondary)
-            }
-            Spacer()
+        ManagerPageHeader(title: "工作区", subtitle: "按项目、环境和服务浏览本机配置", icon: "square.grid.2x2.fill") {
             MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
             MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
-        .background(ManagerStyle.canvas)
     }
 
     private var projectColumn: some View {
@@ -606,14 +592,15 @@ struct WorkspaceView: View {
         case .project(let project, let isNew):
             ProjectEditor(project: project, isNew: isNew) { saveProject($0) }
         case .environment(let projectID, let environment, let isNew):
-            EnvironmentEditor(environment: environment, services: project?.environments.first(where: { $0.id == environment.id })?.services ?? [], isNew: isNew) {
+            EnvironmentEditor(environment: environment, isNew: isNew) {
                 saveEnvironment($0, projectID: projectID)
             }
         case .groups(let projectID, let environment):
             GroupsEditor(environment: environment) { saveGroups($0, projectID: projectID) }
         case .service(let projectID, let environmentID, let service, let isNew):
-            ServiceEditor(service: service, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) {
-                saveService($0, projectID: projectID, environmentID: environmentID)
+            let groups = project?.environments.first(where: { $0.id == environmentID })?.groups ?? []
+            ServiceEditor(service: service, groups: groups, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) { edited, groupIDs in
+                saveService(edited, groupIDs: groupIDs, projectID: projectID, environmentID: environmentID)
             }
         }
     }
@@ -660,7 +647,7 @@ struct WorkspaceView: View {
         editor = nil
     }
 
-    private func saveService(_ edited: Service, projectID: UUID, environmentID: UUID) {
+    private func saveService(_ edited: Service, groupIDs: Set<UUID>, projectID: UUID, environmentID: UUID) {
         model.update { workspace in
             guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }),
                   let environmentIndex = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == environmentID }) else { return }
@@ -668,6 +655,13 @@ struct WorkspaceView: View {
                 workspace.projects[projectIndex].environments[environmentIndex].services[index] = edited
             } else {
                 workspace.projects[projectIndex].environments[environmentIndex].services.append(edited)
+            }
+            for index in workspace.projects[projectIndex].environments[environmentIndex].groups.indices {
+                if groupIDs.contains(workspace.projects[projectIndex].environments[environmentIndex].groups[index].id) {
+                    workspace.projects[projectIndex].environments[environmentIndex].groups[index].serviceIDs.insert(edited.id)
+                } else {
+                    workspace.projects[projectIndex].environments[environmentIndex].groups[index].serviceIDs.remove(edited.id)
+                }
             }
         }
         guard model.errorMessage == nil else { return }
@@ -899,6 +893,8 @@ private struct ProjectEditor: View {
 private struct GroupsEditor: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: ProjectEnvironment
+    @State private var newGroupName = ""
+    @State private var editingGroupID: UUID?
     let onSave: (ProjectEnvironment) -> Void
 
     init(environment: ProjectEnvironment, onSave: @escaping (ProjectEnvironment) -> Void) {
@@ -915,57 +911,73 @@ private struct GroupsEditor: View {
             )
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if draft.groups.isEmpty {
-                        ManagerFormCard("还没有分组", subtitle: "按服务用途或技术层创建分组，例如“后端”或“前端”。", icon: "tag") {
-                            Button { draft.groups.append(ServiceGroup(name: "新分组")) } label: {
-                                Label("创建第一个分组", systemImage: "plus")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(ManagerStyle.accent)
+                    ManagerFormCard("添加分组", subtitle: "分组只属于当前环境，一个服务可以加入多个分组。", icon: "tag") {
+                        HStack(alignment: .bottom, spacing: 10) {
+                            ManagerTextField(title: "分组名称", placeholder: "例如 后端服务", text: $newGroupName)
+                            Button {
+                                let name = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !name.isEmpty else { return }
+                                draft.groups.append(ServiceGroup(name: name))
+                                newGroupName = ""
+                            } label: { Label("添加", systemImage: "plus") }
+                                .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                                .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
-                    ForEach(draft.groups) { group in
-                        ManagerFormCard("分组成员", subtitle: "一个服务可以同时属于多个分组。", icon: "person.3") {
-                            HStack(alignment: .center, spacing: 10) {
-                                ManagerTextField(title: "分组名称", placeholder: "例如 后端服务", text: groupName(group.id))
-                                Button(role: .destructive) {
-                                    draft.groups.removeAll { $0.id == group.id }
-                                } label: {
-                                    Image(systemName: "trash").frame(width: 34, height: 34)
-                                }
-                                .buttonStyle(.bordered)
-                                .help("删除分组，不会删除服务")
-                                .padding(.top, 21)
-                            }
-                            if draft.services.isEmpty {
-                                Text("当前环境还没有服务。添加服务后即可设置分组成员。")
-                                    .font(.caption).foregroundColor(.secondary)
-                            } else {
-                                VStack(spacing: 0) {
-                                    ForEach(uniqueServices(draft.services)) { service in
-                                        Toggle(isOn: membership(groupID: group.id, serviceID: service.id)) {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(service.name).font(.system(.callout, design: .rounded).weight(.semibold))
-                                                Text(service.command.isEmpty ? "未设置启动命令" : service.command)
-                                                    .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                    ManagerFormCard("分组列表", subtitle: "编辑分组名称和成员；删除分组不会删除服务。", icon: "list.bullet") {
+                        if draft.groups.isEmpty {
+                            Text("还没有分组。请使用上方输入框添加。")
+                                .font(.callout).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(draft.groups.enumerated()), id: \.element.id) { index, group in
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: "tag.fill").foregroundColor(ManagerStyle.accent)
+                                            if editingGroupID == group.id {
+                                                ManagerTextField(title: "分组名称", placeholder: "分组名称", text: groupName(group.id))
+                                            } else {
+                                                VStack(alignment: .leading, spacing: 3) {
+                                                    Text(group.name).font(.system(.body, design: .rounded).weight(.semibold)).foregroundColor(ManagerStyle.ink)
+                                                    Text("\(group.serviceIDs.intersection(Set(draft.services.map(\.id))).count) 个服务")
+                                                        .font(.caption).foregroundColor(.secondary)
+                                                }
+                                            }
+                                            Spacer(minLength: 8)
+                                            Button(editingGroupID == group.id ? "完成编辑" : "编辑") {
+                                                editingGroupID = editingGroupID == group.id ? nil : group.id
+                                            }.buttonStyle(.bordered)
+                                            Button(role: .destructive) { draft.groups.removeAll { $0.id == group.id } } label: {
+                                                Image(systemName: "trash")
+                                            }.buttonStyle(.bordered).help("删除分组")
+                                        }
+                                        if editingGroupID == group.id {
+                                            if uniqueServices(draft.services).isEmpty {
+                                                Text("当前环境还没有服务。添加服务后可在服务编辑页选择所属分组。")
+                                                    .font(.caption).foregroundColor(.secondary)
+                                            } else {
+                                                VStack(alignment: .leading, spacing: 0) {
+                                                    ForEach(uniqueServices(draft.services)) { service in
+                                                        Toggle(isOn: membership(groupID: group.id, serviceID: service.id)) {
+                                                            VStack(alignment: .leading, spacing: 2) {
+                                                                Text(service.name).font(.system(.callout, design: .rounded).weight(.semibold))
+                                                                Text(service.command.isEmpty ? "未设置启动命令" : service.command).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                                            }
+                                                        }
+                                                        .toggleStyle(.checkbox).padding(.vertical, 7)
+                                                    }
+                                                }
+                                                .padding(.horizontal, 11).background(ManagerStyle.canvas)
+                                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                                             }
                                         }
-                                        .toggleStyle(.checkbox)
-                                        .padding(.vertical, 8)
-                                        if service.id != uniqueServices(draft.services).last?.id { Divider() }
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 12)
+                                    if index < draft.groups.count - 1 { Divider() }
                                 }
-                                .padding(.horizontal, 11)
-                                .background(ManagerStyle.canvas)
-                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                             }
                         }
-                    }
-                    if !draft.groups.isEmpty {
-                        Button { draft.groups.append(ServiceGroup(name: "新分组")) } label: {
-                            Label("添加分组", systemImage: "plus")
-                        }
-                        .buttonStyle(.bordered)
                     }
                 }
                 .padding(18)
@@ -1006,12 +1018,10 @@ private struct EnvironmentEditor: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: ProjectEnvironment
     let isNew: Bool
-    let services: [Service]
     let onSave: (ProjectEnvironment) -> Void
 
-    init(environment: ProjectEnvironment, services: [Service], isNew: Bool, onSave: @escaping (ProjectEnvironment) -> Void) {
+    init(environment: ProjectEnvironment, isNew: Bool, onSave: @escaping (ProjectEnvironment) -> Void) {
         _draft = State(initialValue: environment)
-        self.services = services
         self.isNew = isNew
         self.onSave = onSave
     }
@@ -1029,54 +1039,6 @@ private struct EnvironmentEditor: View {
                         ManagerTextField(title: "环境名称", placeholder: "例如 开发环境", text: $draft.name)
                     }
 
-                    ManagerFormCard("服务分组", subtitle: "分组只用于筛选和批量操作；服务仍属于原项目与环境，一个服务可以加入多个分组。", icon: "person.3") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if draft.groups.isEmpty {
-                                Label("还没有分组。可以按用途创建，例如“后端”或“前端”。", systemImage: "info.circle")
-                                    .font(.callout).foregroundColor(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            ForEach(draft.groups) { group in
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack(alignment: .center, spacing: 10) {
-                                        ManagerTextField(title: "分组名称", placeholder: "例如 后端服务", text: groupName(group.id))
-                                        Button(role: .destructive) { draft.groups.removeAll { $0.id == group.id } } label: {
-                                            Image(systemName: "trash")
-                                                .frame(width: 34, height: 34)
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .help("删除此分组，不会删除其中的服务")
-                                        .padding(.top, 22)
-                                    }
-                                    if services.isEmpty {
-                                        Text("添加服务后，可以在这里选择分组成员。")
-                                            .font(.caption).foregroundColor(.secondary)
-                                    } else {
-                                        VStack(spacing: 0) {
-                                            ForEach(services) { service in
-                                                Toggle(service.name, isOn: groupMembership(groupID: group.id, serviceID: service.id))
-                                                    .toggleStyle(.checkbox)
-                                                    .padding(.vertical, 7)
-                                                if service.id != services.last?.id { Divider() }
-                                            }
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .background(ManagerStyle.canvas)
-                                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                                    }
-                                }
-                                .padding(13)
-                                .background(ManagerStyle.canvas)
-                                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                            }
-                            Button {
-                                draft.groups.append(ServiceGroup(name: "新分组"))
-                            } label: {
-                                Label("添加分组", systemImage: "plus")
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
                 }
                 .padding(18)
             }
@@ -1088,8 +1050,7 @@ private struct EnvironmentEditor: View {
     }
 
     private var editorHeight: CGFloat {
-        let contentHeight = 440 + CGFloat(draft.groups.count) * CGFloat(services.count > 0 ? 110 : 78)
-        return max(420, min(contentHeight, (NSScreen.main?.visibleFrame.height ?? 720) - 80))
+        max(420, min(500, (NSScreen.main?.visibleFrame.height ?? 720) - 80))
     }
 
     private func groupName(_ id: UUID) -> Binding<String> {
@@ -1115,16 +1076,20 @@ private struct ServiceEditor: View {
     @State private var environmentText: String
     @State private var domainText: String
     @State private var portText: String
+    @State private var selectedGroupIDs: Set<UUID>
     let isNew: Bool
+    let groups: [ServiceGroup]
     let runtimeResources: [ResourceRecord]
-    let onSave: (Service) -> Void
+    let onSave: (Service, Set<UUID>) -> Void
 
-    init(service: Service, runtimeResources: [ResourceRecord], isNew: Bool, onSave: @escaping (Service) -> Void) {
+    init(service: Service, groups: [ServiceGroup], runtimeResources: [ResourceRecord], isNew: Bool, onSave: @escaping (Service, Set<UUID>) -> Void) {
         _draft = State(initialValue: service)
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
         _domainText = State(initialValue: service.domain ?? "")
         _portText = State(initialValue: service.port.map(String.init) ?? "")
+        _selectedGroupIDs = State(initialValue: Set(groups.filter { $0.serviceIDs.contains(service.id) }.map(\.id)))
+        self.groups = groups
         self.runtimeResources = runtimeResources
         self.isNew = isNew
         self.onSave = onSave
@@ -1173,11 +1138,11 @@ private struct ServiceEditor: View {
                         if !validPort { Text("端口范围为 1–65535。").font(.caption).foregroundColor(.red) }
                     }
 
-                    ManagerFormCard("启动参数（可选）", subtitle: "只填写启动命令后面的内容；不要把完整命令写在这里。每行会作为一个独立参数传入。", icon: "text.alignleft") {
+                    ManagerFormCard("启动参数（可选）", subtitle: "每行填写一个参数项；选项和值分别占一行，管理器会按顺序组合后传给启动命令。", icon: "text.alignleft") {
                         HStack(alignment: .top, spacing: 12) {
                             LabeledTextEditor(
                                 title: "命令参数",
-                                hint: "一行一个参数；空行忽略。",
+                                hint: "一行一项；例如 --port 与 8000 分别占一行。",
                                 placeholder: "--host\n0.0.0.0\n--port\n8000",
                                 text: $argumentsText,
                                 height: 142
@@ -1194,12 +1159,18 @@ private struct ServiceEditor: View {
                                     .font(.system(.caption, design: .monospaced).weight(.medium))
                                     .textSelection(.enabled)
                                 Divider()
-                                Text("下面四行分别作为四个参数传入：")
+                                Text("每行是一个参数项：")
                                     .font(.caption).foregroundColor(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Text("--host\n0.0.0.0\n--port\n8000")
-                                    .font(.system(.caption, design: .monospaced).weight(.medium))
-                                    .textSelection(.enabled)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("1  --host")
+                                    Text("2  0.0.0.0")
+                                    Text("3  --port")
+                                    Text("4  8000")
+                                }
+                                .font(.system(.caption, design: .monospaced).weight(.medium)).textSelection(.enabled)
+                                Text("第 3、4 项合起来表示 --port 8000。")
+                                    .font(.caption2).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                                 Divider()
                                 Text("组合后的完整启动命令")
                                     .font(.caption).foregroundColor(.secondary)
@@ -1216,6 +1187,27 @@ private struct ServiceEditor: View {
 
                     ManagerFormCard("服务说明", subtitle: "仅供你和协作者阅读，不会传给服务进程。", icon: "text.quote") {
                         LabeledTextEditor(title: "用途或备注", hint: "例如：本地 API；需先启动数据库。", placeholder: "记录服务用途、启动注意事项或其他说明…", text: $draft.description, height: 82)
+                    }
+
+                    ManagerFormCard("所属分组", subtitle: "分组仅作用于当前环境，可选择多个。", icon: "tag") {
+                        if groups.isEmpty {
+                            Text("当前环境还没有分组。请先在工作区点击“管理分组”创建分组。")
+                                .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                                    Toggle(group.name, isOn: Binding(
+                                        get: { selectedGroupIDs.contains(group.id) },
+                                        set: { included in
+                                            if included { selectedGroupIDs.insert(group.id) }
+                                            else { selectedGroupIDs.remove(group.id) }
+                                        }
+                                    ))
+                                    .toggleStyle(.checkbox).padding(.vertical, 8)
+                                    if index < groups.count - 1 { Divider() }
+                                }
+                            }
+                        }
                     }
 
                     ManagerFormCard("环境变量（可选）", subtitle: "仅影响此服务及其子进程；每行一项，格式为 KEY=VALUE。", icon: "curlybraces") {
@@ -1240,7 +1232,7 @@ private struct ServiceEditor: View {
                     if !key.isEmpty { values[key] = value }
                 }
                 draft.environment = values
-                onSave(draft)
+                onSave(draft, selectedGroupIDs)
             }
         }
         .frame(width: 760, height: editorHeight)
