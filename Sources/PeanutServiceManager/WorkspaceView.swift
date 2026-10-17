@@ -62,9 +62,9 @@ struct WorkspaceView: View {
             workspaceHeader
             Divider().opacity(0.55)
         HSplitView {
-            projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 220)
-            environmentColumn.frame(minWidth: 140, idealWidth: 160, maxWidth: 220)
-            serviceColumn.frame(minWidth: 195, idealWidth: 245, maxWidth: 360)
+            projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 180)
+            environmentColumn.frame(minWidth: 140, idealWidth: 160, maxWidth: 185)
+            serviceColumn.frame(minWidth: 195, idealWidth: 205, maxWidth: 205)
             serviceManagementColumn.frame(minWidth: 280, idealWidth: 360, maxWidth: .infinity)
             }
         }
@@ -120,7 +120,7 @@ struct WorkspaceView: View {
                                 Image(systemName: "folder.fill")
                                     .foregroundColor(model.selectedProjectID == item.id ? ManagerStyle.accent : .secondary)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                                    Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1).minimumScaleFactor(0.78)
                                     Text("\(item.environments.count) 个环境")
                                         .font(.caption).foregroundColor(.secondary)
                                 }
@@ -166,7 +166,7 @@ struct WorkspaceView: View {
                                     Image(systemName: "square.stack.3d.up.fill")
                                         .foregroundColor(model.selectedEnvironmentID == item.id ? ManagerStyle.accent : .secondary)
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                                        Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1).minimumScaleFactor(0.78)
                                         Text("\(item.services.count) 个服务 · \(item.groups.count) 个分组")
                                             .font(.caption).foregroundColor(.secondary)
                                     }
@@ -234,7 +234,7 @@ struct WorkspaceView: View {
                     .font(.caption).foregroundColor(.secondary)
                 Spacer(minLength: 2)
                 Picker("分组", selection: $selectedGroupID) {
-                    Text("按分组选服务…").tag(Optional<UUID>.none)
+                    Text("选择分组").tag(Optional<UUID>.none)
                     ForEach(uniqueGroups(environment.groups)) { group in Text(group.name).tag(Optional(group.id)) }
                 }
                 .labelsHidden()
@@ -282,7 +282,10 @@ struct WorkspaceView: View {
                         .foregroundColor(processStateColor(item))
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
+                        Text(item.name)
+                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(item.command.isEmpty ? "未设置启动命令" : item.command)
                             .font(.caption).foregroundColor(.secondary).lineLimit(1)
                     }
