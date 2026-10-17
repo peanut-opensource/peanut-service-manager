@@ -98,6 +98,7 @@ struct SettingsView: View {
     @State private var feedback: String?
     @AppStorage("peanutServiceManager.globalShortcut") private var globalShortcut = "optionY"
     @AppStorage("peanutServiceManager.globalShortcutStatus") private var globalShortcutStatus = "正在检查"
+    @State private var mcpFeedback: String?
 
     var body: some View {
         ScrollView {
@@ -127,7 +128,9 @@ struct SettingsView: View {
                             Text("Command + Option + Y").tag("commandOptionY")
                         }
                         .onChange(of: globalShortcut) { _ in
-                            NotificationCenter.default.post(name: Notification.Name("PeanutServiceManagerGlobalShortcutChanged"), object: nil)
+                            DistributedNotificationCenter.default().postNotificationName(
+                                Notification.Name("PeanutServiceManagerGlobalShortcutChanged"), object: nil, deliverImmediately: true
+                            )
                         }
                         HStack(spacing: 8) {
                             Circle().fill(globalShortcutStatus == "已启用" ? ManagerStyle.success : ManagerStyle.warning).frame(width: 8, height: 8)
@@ -172,15 +175,25 @@ struct SettingsView: View {
                         infoRow("开发团队", "花生科技研发中心")
                     }
 
-                    settingsCard("本地 MCP", subtitle: "AI 客户端接入状态与说明", icon: "network", color: ManagerStyle.warning) {
-                        Label("尚未实现", systemImage: "exclamationmark.circle.fill")
+                    settingsCard("本地 MCP 服务", subtitle: "让 AI 客户端安全管理本机项目、环境和服务", icon: "network", color: ManagerStyle.accent) {
+                        Label(mcpExecutableAvailable ? "服务程序已就绪，客户端按需启动" : "找不到 MCP 服务程序，请重新安装应用",
+                              systemImage: mcpExecutableAvailable ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                             .font(.system(.callout, design: .rounded).weight(.semibold))
-                            .foregroundColor(ManagerStyle.warning)
-                        infoRow("服务状态", "未提供 MCP 服务")
-                        infoRow("安装说明", "当前版本没有 MCP 安装入口")
-                        infoRow("使用说明", "当前版本不能通过 MCP 连接或操作")
-                        Text("MCP 服务端程序和客户端配置尚未实现。待接入能力完成后，这里会显示运行状态、安装方法和使用步骤。")
+                            .foregroundColor(mcpExecutableAvailable ? ManagerStyle.success : ManagerStyle.warning)
+                        infoRow("传输方式", "本机 STDIO；不开放网络端口")
+                        infoRow("程序路径", mcpExecutablePath)
+                        Text("在 Codex 的 ~/.codex/config.toml 中添加下方配置，然后重启或重新连接客户端。每个客户端会独立启动 MCP 进程；服务配置和运行状态与本应用共用。")
                             .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        HStack {
+                            Button("复制 Codex 配置") { copyMCPConfiguration(for: .codex) }
+                                .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                            Button("复制通用 JSON 配置") { copyMCPConfiguration(for: .json) }
+                                .buttonStyle(.bordered)
+                        }
+                        if let mcpFeedback {
+                            Label(mcpFeedback, systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundColor(ManagerStyle.success)
+                        }
                     }
                 }
             }
@@ -219,6 +232,41 @@ struct SettingsView: View {
             Spacer()
             Text(value).foregroundColor(ManagerStyle.ink).textSelection(.enabled)
         }.font(.callout)
+    }
+
+    private var mcpExecutablePath: String {
+        Bundle.main.executableURL?.path ?? CommandLine.arguments.first ?? ""
+    }
+
+    private var mcpExecutableAvailable: Bool {
+        FileManager.default.isExecutableFile(atPath: mcpExecutablePath)
+    }
+
+    private enum MCPConfigurationFormat { case codex, json }
+
+    private func copyMCPConfiguration(for format: MCPConfigurationFormat) {
+        let configuration: String
+        switch format {
+        case .codex:
+            let quotedPath = mcpExecutablePath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            configuration = """
+            [mcp_servers.peanut_service_manager]
+            command = "\(quotedPath)"
+            args = ["--mcp-server"]
+            enabled = true
+            """
+        case .json:
+            let value: [String: Any] = ["mcpServers": ["peanut-service-manager": ["command": mcpExecutablePath, "args": ["--mcp-server"]]]]
+            guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]),
+                  let text = String(data: data, encoding: .utf8) else {
+                model.errorMessage = "无法生成 MCP 客户端配置。"
+                return
+            }
+            configuration = text
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(configuration, forType: .string)
+        mcpFeedback = "配置已复制。"
     }
 
     private func loadCredentialKey() {

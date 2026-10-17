@@ -288,17 +288,36 @@ final class AppModel: ObservableObject {
     }
 
     func observeWorkspace() {
+        do { try refreshWorkspaceConfiguration() }
+        catch { errorMessage = error.localizedDescription }
         refreshServiceStates()
         refreshObservedServiceLogs()
         guard observationTimer == nil else { return }
         observationTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                do { try self.refreshWorkspaceConfiguration() }
+                catch { self.errorMessage = error.localizedDescription }
                 self.refreshServiceStates()
                 self.refreshObservedServiceLogs()
             }
         }
         if let observationTimer { RunLoop.main.add(observationTimer, forMode: .common) }
+    }
+
+    func refreshWorkspaceConfiguration() throws {
+        guard try store.refreshFromDisk() else { return }
+        workspace = store.workspace
+        if let selectedProjectID, !workspace.projects.contains(where: { $0.id == selectedProjectID }) {
+            self.selectedProjectID = nil
+            selectedEnvironmentID = nil
+            selectedServiceID = nil
+        } else if let selectedProjectID, let selectedEnvironmentID,
+                  let project = workspace.projects.first(where: { $0.id == selectedProjectID }),
+                  !project.environments.contains(where: { $0.id == selectedEnvironmentID }) {
+            self.selectedEnvironmentID = nil
+            selectedServiceID = nil
+        }
     }
 
     func stopObservingWorkspace() {

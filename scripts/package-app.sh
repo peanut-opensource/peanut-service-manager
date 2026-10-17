@@ -8,15 +8,12 @@ if [[ "$CONFIGURATION" != "debug" && "$CONFIGURATION" != "release" ]]; then
   exit 2
 fi
 
-build_for_arch() {
-  local arch="$1"
-  local triple="${arch}-apple-macosx12.0"
-  swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$triple"
-  swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$triple" --show-bin-path
-}
-
-ARM_BIN_DIR="$(build_for_arch arm64 | tail -n 1)"
-X86_BIN_DIR="$(build_for_arch x86_64 | tail -n 1)"
+ARM_TRIPLE="arm64-apple-macosx12.0"
+X86_TRIPLE="x86_64-apple-macosx12.0"
+swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$ARM_TRIPLE"
+ARM_BIN_DIR="$(swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$ARM_TRIPLE" --show-bin-path)"
+swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$X86_TRIPLE"
+X86_BIN_DIR="$(swift build --package-path "$ROOT" --configuration "$CONFIGURATION" --triple "$X86_TRIPLE" --show-bin-path)"
 APP="$ROOT/build/Peanut Service Manager.app"
 CONTENTS="$APP/Contents"
 

@@ -161,8 +161,15 @@ public final class SupervisorClient {
 
         let executableURL = Bundle.main.executableURL
             ?? URL(fileURLWithPath: CommandLine.arguments[0], isDirectory: false)
-        return executableURL.deletingLastPathComponent()
+        let executableDirectory = executableURL.deletingLastPathComponent()
+        let contentsDirectory = executableDirectory.lastPathComponent == "MacOS"
+            ? executableDirectory.deletingLastPathComponent()
+            : executableDirectory
+        let bundledHelper = contentsDirectory
+            .appendingPathComponent("Library/LaunchServices", isDirectory: true)
             .appendingPathComponent("peanut-service-supervisor", isDirectory: false)
+        if FileManager.default.isExecutableFile(atPath: bundledHelper.path) { return bundledHelper }
+        return executableDirectory.appendingPathComponent("peanut-service-supervisor", isDirectory: false)
     }
 
     /// Uses O_EXCL so a pre-existing user plist is never replaced.

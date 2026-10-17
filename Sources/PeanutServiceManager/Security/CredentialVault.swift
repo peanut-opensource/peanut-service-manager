@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Darwin
 
 /// Stores only encrypted resource secrets in the local application-support folder.
 public struct CredentialVault {
@@ -32,10 +33,10 @@ public struct CredentialVault {
     }
 
     public func encryptionKey() throws -> String {
-        try loadStore().encryptionKey
+        try withExclusiveFileLock { try loadStore().encryptionKey }
     }
 
-    func exportedConfiguration() throws -> StoreFile { try loadStore() }
+    func exportedConfiguration() throws -> StoreFile { try withExclusiveFileLock { try loadStore() } }
 
     func validate(_ configuration: StoreFile, credentialReferences: Set<String>) throws {
         guard configuration.formatVersion == 1 else { throw VaultError.unsupportedStoreVersion }
@@ -48,41 +49,51 @@ public struct CredentialVault {
         }
     }
 
-    func replaceConfiguration(with configuration: StoreFile) throws { try save(configuration) }
+    func replaceConfiguration(with configuration: StoreFile) throws {
+        try withExclusiveFileLock { try save(configuration) }
+    }
 
     /// The key itself is intentionally stored as readable local configuration.
     public func setEncryptionKey(_ newKey: String) throws {
         guard !newKey.isEmpty else { throw VaultError.invalidEncryptionKey }
-        let current = try loadStore()
-        guard newKey != current.encryptionKey else { return }
-        var next = StoreFile(formatVersion: current.formatVersion, encryptionKey: newKey)
-        for (reference, encrypted) in current.secrets {
-            let plaintext = try WorkspaceCipher.decryptCredential(encrypted, key: current.encryptionKey)
-            next.secrets[reference] = try WorkspaceCipher.encryptCredential(plaintext, key: newKey)
+        try withExclusiveFileLock {
+            let current = try loadStore()
+            guard newKey != current.encryptionKey else { return }
+            var next = StoreFile(formatVersion: current.formatVersion, encryptionKey: newKey)
+            for (reference, encrypted) in current.secrets {
+                let plaintext = try WorkspaceCipher.decryptCredential(encrypted, key: current.encryptionKey)
+                next.secrets[reference] = try WorkspaceCipher.encryptCredential(plaintext, key: newKey)
+            }
+            try save(next)
         }
-        try save(next)
     }
 
     public func add(_ secret: Data, for resource: ResourceRecord) throws {
         let reference = try credentialReference(for: resource)
-        var store = try loadStore()
-        guard store.secrets[reference] == nil else { throw VaultError.credentialAlreadyExists }
-        store.secrets[reference] = try WorkspaceCipher.encryptCredential(secret, key: store.encryptionKey)
-        try save(store)
+        try withExclusiveFileLock {
+            var store = try loadStore()
+            guard store.secrets[reference] == nil else { throw VaultError.credentialAlreadyExists }
+            store.secrets[reference] = try WorkspaceCipher.encryptCredential(secret, key: store.encryptionKey)
+            try save(store)
+        }
     }
 
     public func update(_ secret: Data, for resource: ResourceRecord) throws {
         let reference = try credentialReference(for: resource)
-        var store = try loadStore()
-        store.secrets[reference] = try WorkspaceCipher.encryptCredential(secret, key: store.encryptionKey)
-        try save(store)
+        try withExclusiveFileLock {
+            var store = try loadStore()
+            store.secrets[reference] = try WorkspaceCipher.encryptCredential(secret, key: store.encryptionKey)
+            try save(store)
+        }
     }
 
     public func delete(for resource: ResourceRecord) throws {
         let reference = try credentialReference(for: resource)
-        var store = try loadStore()
-        store.secrets.removeValue(forKey: reference)
-        try save(store)
+        try withExclusiveFileLock {
+            var store = try loadStore()
+            store.secrets.removeValue(forKey: reference)
+            try save(store)
+        }
     }
 
     public func read(
@@ -95,7 +106,7 @@ public struct CredentialVault {
               binding.projectID == projectID,
               binding.environmentID == environmentID else { throw VaultError.bindingMismatch }
         guard let reference = resource.credentialReference else { throw VaultError.invalidCredentialReference }
-        return try read(reference: reference)
+        return try withExclusiveFileLock { try read(reference: reference) }
     }
 
     private func read(reference: String) throws -> Data? {
@@ -141,5 +152,19 @@ public struct CredentialVault {
     }
 
     private var storeURL: URL { storeDirectory.appendingPathComponent("credential-store.json") }
+
+    private func withExclusiveFileLock<T>(_ body: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+        let lockURL = storeDirectory.appendingPathComponent("credential-store.lock")
+        let descriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw CocoaError(.fileLocking) }
+        defer { close(descriptor) }
+        while flock(descriptor, LOCK_EX) != 0 {
+            if errno == EINTR { continue }
+            throw CocoaError(.fileLocking)
+        }
+        defer { _ = flock(descriptor, LOCK_UN) }
+        return try body()
+    }
 
 }

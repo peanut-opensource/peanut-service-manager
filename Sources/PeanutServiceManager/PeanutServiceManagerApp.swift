@@ -9,6 +9,20 @@ struct PeanutServiceManagerApp: App {
     @State private var startupError: String?
 
     init() {
+        if CommandLine.arguments.contains("--mcp-server") {
+            do {
+                let model = AppModel(store: try WorkspaceStore())
+                _model = State(initialValue: model)
+                _startupError = State(initialValue: nil)
+                model.startServicesMarkedForManagerLaunch()
+                LocalMCPServer.start(model: model)
+                return
+            } catch {
+                _model = State(initialValue: nil)
+                _startupError = State(initialValue: error.localizedDescription)
+                return
+            }
+        }
         do {
             _model = State(initialValue: AppModel(store: try WorkspaceStore()))
             _startupError = State(initialValue: nil)
@@ -21,18 +35,22 @@ struct PeanutServiceManagerApp: App {
     var body: some Scene {
         WindowGroup("花生服务管理器") {
             Group {
-                if let model {
-                    WorkspaceView(model: model)
+                if CommandLine.arguments.contains("--mcp-server") {
+                    EmptyView()
                 } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                        Text("无法读取本地配置")
-                            .font(.headline)
-                        Text(startupError ?? "未知错误")
-                            .foregroundStyle(.secondary)
+                    if let model {
+                        WorkspaceView(model: model)
+                    } else {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.largeTitle)
+                            Text("无法读取本地配置")
+                                .font(.headline)
+                            Text(startupError ?? "未知错误")
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(32)
                     }
-                    .padding(32)
                 }
             }
             .frame(minWidth: 820, minHeight: 560)
@@ -50,6 +68,10 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyHandlerRef: EventHandlerRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--mcp-server") {
+            NSApp.setActivationPolicy(.prohibited)
+            return
+        }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let iconURL = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
            let image = NSImage(contentsOf: iconURL) {
@@ -64,7 +86,7 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
-        NotificationCenter.default.addObserver(
+        DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(globalShortcutConfigurationChanged),
             name: Notification.Name("PeanutServiceManagerGlobalShortcutChanged"),
