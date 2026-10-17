@@ -64,6 +64,12 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(globalShortcutConfigurationChanged),
+            name: Notification.Name("PeanutServiceManagerGlobalShortcutChanged"),
+            object: nil
+        )
         registerGlobalShortcut()
     }
 
@@ -85,6 +91,14 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerGlobalShortcut() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let hotKeyHandlerRef {
+            RemoveEventHandler(hotKeyHandlerRef)
+            self.hotKeyHandlerRef = nil
+        }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
@@ -98,21 +112,38 @@ final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
             &hotKeyHandlerRef
         )
-        guard installStatus == noErr else { return }
+        guard installStatus == noErr else {
+            UserDefaults.standard.set("注册失败", forKey: "peanutServiceManager.globalShortcutStatus")
+            return
+        }
         let shortcutID = EventHotKeyID(signature: OSType(0x50534D31), id: 1)
+        let preset = UserDefaults.standard.string(forKey: "peanutServiceManager.globalShortcut") ?? "optionY"
+        let modifiers: UInt32
+        switch preset {
+        case "controlOptionY": modifiers = UInt32(optionKey | controlKey)
+        case "commandOptionY": modifiers = UInt32(optionKey | cmdKey)
+        default: modifiers = UInt32(optionKey)
+        }
         let registerStatus = RegisterEventHotKey(
             UInt32(kVK_ANSI_Y),
-            UInt32(optionKey),
+            modifiers,
             shortcutID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
-        if registerStatus != noErr, let hotKeyHandlerRef {
-            RemoveEventHandler(hotKeyHandlerRef)
-            self.hotKeyHandlerRef = nil
+        if registerStatus != noErr {
+            UserDefaults.standard.set("注册失败：快捷键可能已被占用", forKey: "peanutServiceManager.globalShortcutStatus")
+            if let hotKeyHandlerRef {
+                RemoveEventHandler(hotKeyHandlerRef)
+                self.hotKeyHandlerRef = nil
+            }
+        } else {
+            UserDefaults.standard.set("已启用", forKey: "peanutServiceManager.globalShortcutStatus")
         }
     }
+
+    @objc private func globalShortcutConfigurationChanged() { registerGlobalShortcut() }
 
     @objc private func quit() { NSApp.terminate(nil) }
 }

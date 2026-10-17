@@ -96,6 +96,8 @@ struct SettingsView: View {
     @State private var loginEnabled = LoginItemManager().isEnabled
     @State private var credentialKey = ""
     @State private var feedback: String?
+    @AppStorage("peanutServiceManager.globalShortcut") private var globalShortcut = "optionY"
+    @AppStorage("peanutServiceManager.globalShortcutStatus") private var globalShortcutStatus = "正在检查"
 
     var body: some View {
         ScrollView {
@@ -116,6 +118,23 @@ struct SettingsView: View {
                         Label("支持 macOS 12 及更新版本", systemImage: "checkmark.circle.fill")
                         Label("兼容 Intel 与 Apple 芯片", systemImage: "cpu")
                             .font(.callout).foregroundColor(.secondary)
+                    }
+
+                    settingsCard("快捷键", subtitle: "在任何应用中快速显示管理器", icon: "command", color: Color(red: 0.34, green: 0.48, blue: 0.77)) {
+                        Picker("显示主窗口", selection: $globalShortcut) {
+                            Text("Option + Y").tag("optionY")
+                            Text("Control + Option + Y").tag("controlOptionY")
+                            Text("Command + Option + Y").tag("commandOptionY")
+                        }
+                        .onChange(of: globalShortcut) { _ in
+                            NotificationCenter.default.post(name: Notification.Name("PeanutServiceManagerGlobalShortcutChanged"), object: nil)
+                        }
+                        HStack(spacing: 8) {
+                            Circle().fill(globalShortcutStatus == "已启用" ? ManagerStyle.success : ManagerStyle.warning).frame(width: 8, height: 8)
+                            Text("状态：\(globalShortcutStatus)").font(.callout).foregroundColor(.secondary)
+                        }
+                        Text("快捷键由本机全局热键注册。若被其他应用占用，可在此切换组合键。")
+                            .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
 
                     settingsCard("密码保护", subtitle: "只加密资源密码", icon: "lock.shield", color: Color(red: 0.23, green: 0.61, blue: 0.50)) {
@@ -151,6 +170,17 @@ struct SettingsView: View {
                         }.font(.callout)
                         Divider()
                         infoRow("开发团队", "花生科技研发中心")
+                    }
+
+                    settingsCard("本地 MCP", subtitle: "AI 客户端接入状态与说明", icon: "network", color: ManagerStyle.warning) {
+                        Label("尚未实现", systemImage: "exclamationmark.circle.fill")
+                            .font(.system(.callout, design: .rounded).weight(.semibold))
+                            .foregroundColor(ManagerStyle.warning)
+                        infoRow("服务状态", "未提供 MCP 服务")
+                        infoRow("安装说明", "当前版本没有 MCP 安装入口")
+                        infoRow("使用说明", "当前版本不能通过 MCP 连接或操作")
+                        Text("MCP 服务端程序和客户端配置尚未实现。待接入能力完成后，这里会显示运行状态、安装方法和使用步骤。")
+                            .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
