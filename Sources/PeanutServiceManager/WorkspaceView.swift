@@ -568,12 +568,9 @@ struct WorkspaceView: View {
                         detailMetric("启动方式", value: "随应用启动", icon: "power")
                     }
                 }
-                if let domain = service.domain, !domain.isEmpty {
-                    detailCard("访问入口", icon: "globe") {
-                        Text(service.port.map { "\(domain):\($0)" } ?? domain)
-                            .font(.system(.body, design: .monospaced).weight(.medium))
-                            .textSelection(.enabled)
-                    }
+                detailCard("访问入口", icon: "globe") {
+                    ServiceAccessLink(service: service)
+                        .font(.system(.body, design: .monospaced).weight(.medium))
                 }
                 detailCard("启动配置", icon: "terminal") {
                     VStack(alignment: .leading, spacing: 9) {
@@ -1429,7 +1426,7 @@ private struct ServiceEditor: View {
         _draft = State(initialValue: service)
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
-        _domainText = State(initialValue: service.domain ?? "")
+        _domainText = State(initialValue: service.domain ?? "127.0.0.1")
         _portText = State(initialValue: service.port.map(String.init) ?? "")
         _selectedGroupIDs = State(initialValue: Set(groups.filter { $0.serviceIDs.contains(service.id) }.map(\.id)))
         self.groups = groups
@@ -1471,14 +1468,17 @@ private struct ServiceEditor: View {
                         }
                     }
 
-                    ManagerFormCard("访问入口", subtitle: "仅作为本机备注展示，不会配置 DNS、代理或端口转发。", icon: "globe") {
-                        HStack(spacing: 10) {
-                            ManagerTextField(title: "域名或主机名", placeholder: "api.example.test", text: $domainText)
-                            ManagerTextField(title: "端口", placeholder: "8080", hint: "可选", text: $portText)
+                    ManagerFormCard("访问入口", subtitle: "保存后可点击地址，在默认浏览器中打开服务；不修改服务监听配置。", icon: "globe") {
+                        HStack(alignment: .top, spacing: 10) {
+                            ManagerTextField(title: "主机地址", placeholder: "127.0.0.1 或 https://api.example.com", text: $domainText)
+                            ManagerTextField(title: "端口（可选）", placeholder: "8080", text: $portText)
                                 .frame(width: 120)
                                 .onChange(of: portText) { value in portText = String(value.filter(\.isNumber).prefix(5)) }
                         }
+                        Text("支持 IP、域名或 HTTP/HTTPS 地址；仅填端口时使用 127.0.0.1，未填端口时使用地址中指定的端口或协议默认端口。")
+                            .font(.caption).foregroundColor(.secondary)
                         if !validPort { Text("端口范围为 1–65535。").font(.caption).foregroundColor(.red) }
+                        if !validHost { Text("请填写有效的 IP、域名或 HTTP/HTTPS 地址。").font(.caption).foregroundColor(.red) }
                     }
 
                     ManagerFormCard("启动参数（可选）", subtitle: "每行填写一个参数项；选项和值分别占一行，管理器会按顺序组合后传给启动命令。", icon: "text.alignleft") {
@@ -1562,7 +1562,7 @@ private struct ServiceEditor: View {
             .frame(maxHeight: .infinity)
             .background(ManagerStyle.canvas)
 
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort) {
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort && validHost) {
                 draft.arguments = argumentsText.split(separator: "\n").map(String.init)
                 let domain = domainText.trimmingCharacters(in: .whitespacesAndNewlines)
                 draft.domain = domain.isEmpty ? nil : domain
@@ -1591,6 +1591,15 @@ private struct ServiceEditor: View {
         guard !value.isEmpty else { return true }
         guard let port = Int(value) else { return false }
         return (1...65535).contains(port)
+    }
+
+    private var validHost: Bool {
+        let address = domainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { return true }
+        var service = draft
+        service.domain = address
+        service.port = nil
+        return service.accessURL != nil
     }
 }
 

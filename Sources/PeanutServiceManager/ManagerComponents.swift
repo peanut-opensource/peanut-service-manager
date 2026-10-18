@@ -163,6 +163,28 @@ extension ManagerPageHeader where Trailing == EmptyView {
     }
 }
 
+struct ServiceAccessLink: View {
+    let service: Service
+
+    var body: some View {
+        if let url = service.accessURL {
+            Link(destination: url) {
+                HStack(spacing: 5) {
+                    Text(url.absoluteString).lineLimit(1).truncationMode(.middle)
+                    Image(systemName: "arrow.up.right.square").font(.caption2)
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(ManagerStyle.accent)
+            .help("在默认浏览器中打开 \(url.absoluteString)")
+        } else {
+            Text(service.accessAddress ?? "未登记主机地址和端口")
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+    }
+}
+
 enum ManagerStyle {
     static let accent = Color(red: 0.28, green: 0.42, blue: 0.79)
     static let canvas = Color(NSColor.controlBackgroundColor)

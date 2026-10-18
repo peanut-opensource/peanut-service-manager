@@ -57,6 +57,36 @@ struct Service: Codable, Identifiable, Equatable {
     var startsWithManager: Bool = false
     var domain: String? = nil
     var port: Int? = nil
+
+    var accessURL: URL? {
+        var address = domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !address.isEmpty || port != nil else { return nil }
+        if address.isEmpty { address = "127.0.0.1" }
+        if !address.contains("://") {
+            if address.filter({ $0 == ":" }).count > 1 && !address.hasPrefix("[") && !address.contains("/") {
+                address = "[\(address)]"
+            }
+            address = "http://" + address
+        }
+        guard var components = URLComponents(string: address),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              !host.contains(where: { $0.isWhitespace }),
+              components.user == nil, components.password == nil else { return nil }
+        components.scheme = scheme
+        if let port {
+            guard (1...65535).contains(port) else { return nil }
+            components.port = port
+        }
+        if let port = components.port, !(1...65535).contains(port) { return nil }
+        return components.url
+    }
+
+    var accessAddress: String? {
+        if let accessURL { return accessURL.absoluteString }
+        let address = domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return address.isEmpty ? nil : address
+    }
 }
 
 struct ServiceGroup: Codable, Identifiable, Equatable {

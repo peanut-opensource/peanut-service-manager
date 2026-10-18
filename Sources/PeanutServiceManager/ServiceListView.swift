@@ -114,7 +114,7 @@ struct ServiceListView: View {
                 GeometryReader { geometry in
                     ScrollView(.horizontal) {
                         serviceTable
-                            .frame(width: max(geometry.size.width, 1120), height: geometry.size.height)
+                            .frame(width: max(geometry.size.width, 1280), height: geometry.size.height)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -153,10 +153,14 @@ struct ServiceListView: View {
                 .buttonStyle(.plain)
             }
             .width(min: 180, ideal: 220)
-            TableColumn("项目 / 环境") { entry in
-                Text(entry.path).lineLimit(2).help(entry.path)
+            TableColumn("项目") { entry in
+                Text(entry.project.name).lineLimit(1).help(entry.project.name)
             }
-            .width(min: 145, ideal: 170)
+            .width(min: 100, ideal: 120)
+            TableColumn("环境") { entry in
+                Text(entry.environment.name).lineLimit(1).help(entry.environment.name)
+            }
+            .width(min: 140, ideal: 155)
             TableColumn("分组") { entry in
                 let names = entry.groups.map(\.name).joined(separator: "、")
                 Text(names.isEmpty ? "未分组" : names)
@@ -168,14 +172,10 @@ struct ServiceListView: View {
             }
             .width(min: 120, ideal: 130)
             TableColumn("访问入口") { entry in
-                let address = ServiceEntryState(entry: entry, model: model).accessAddress
-                Text(address ?? "未登记")
+                ServiceAccessLink(service: entry.service)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(address == nil ? .secondary : .primary)
-                    .lineLimit(2).help(address ?? "未登记域名和端口")
-                    .textSelection(.enabled)
             }
-            .width(min: 145, ideal: 170)
+            .width(min: 180, ideal: 220)
             TableColumn("操作") { entry in
                 ServiceEntryActions(
                     entry: entry, model: model,
@@ -255,13 +255,6 @@ private struct ServiceEntryState {
         }
     }
 
-    var accessAddress: String? {
-        let domain = service.domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !domain.isEmpty || service.port != nil else { return nil }
-        if domain.isEmpty { return service.port.map { "端口 \($0)" } }
-        return service.port.map { "\(domain):\($0)" } ?? domain
-    }
-
 }
 
 private struct ServiceOverviewCard: View {
@@ -275,7 +268,6 @@ private struct ServiceOverviewCard: View {
     private var status: ServiceEntryState { ServiceEntryState(entry: entry, model: model) }
     private var snapshot: SupervisorServiceSnapshot? { status.snapshot }
     private var state: (String, Color, String) { status.state }
-    private var accessAddress: String? { status.accessAddress }
     private var serviceDescription: String { service.description.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
@@ -310,10 +302,8 @@ private struct ServiceOverviewCard: View {
                 Image(systemName: "globe.americas.fill").foregroundColor(ManagerStyle.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("访问入口").font(.caption2).foregroundColor(.secondary)
-                    Text(accessAddress ?? "未登记域名和端口")
+                    ServiceAccessLink(service: service)
                         .font(.system(.callout, design: .monospaced).weight(.medium))
-                        .foregroundColor(accessAddress == nil ? .secondary : .primary)
-                        .lineLimit(1).textSelection(.enabled)
                 }
                 Spacer()
                 if let pid = snapshot?.pid { Text("PID \(pid)").font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary) }
