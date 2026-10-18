@@ -91,8 +91,8 @@ struct ServiceListView: View {
                 .padding(.horizontal, 12)
                 .frame(height: 38)
                 .background(ManagerStyle.field)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
+                .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
 
                 Picker("服务分组", selection: $selectedGroupID) {
                     Text("全部分组").tag(Optional<UUID>.none)
@@ -278,7 +278,7 @@ private struct ServiceOverviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 11) {
-                ManagerIconBadge(icon: "server.rack", color: ManagerStyle.accent, size: 36, iconSize: 16, cornerRadius: 8)
+                ManagerIconBadge(icon: "server.rack", color: ManagerStyle.accent, size: 36, iconSize: 16, cornerRadius: 7)
                 VStack(alignment: .leading, spacing: 3) {
                     Button(action: onSelect) {
                         Text(model.serviceDisplayName(service))
@@ -320,9 +320,9 @@ private struct ServiceOverviewCard: View {
             }
             .padding(10)
             .background(ManagerStyle.selection)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
                     .strokeBorder(ManagerStyle.accent.opacity(0.18), lineWidth: 0.8)
             )
 
@@ -401,14 +401,14 @@ private struct ServiceOverviewCard: View {
 
     private func metadataChip(_ title: String, icon: String) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 9, weight: .semibold))
-            Text(title).font(.system(size: 10, weight: .medium, design: .rounded))
+            Image(systemName: icon).font(.system(size: 8.5, weight: .semibold))
+            Text(title).font(.system(size: 9.5, weight: .medium, design: .monospaced))
         }
         .foregroundColor(ManagerStyle.ink)
-        .padding(.horizontal, 8).padding(.vertical, 4)
+        .padding(.horizontal, 6).padding(.vertical, 3)
         .background(ManagerStyle.canvas)
-        .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
+        .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
         .lineLimit(1)
     }
 }

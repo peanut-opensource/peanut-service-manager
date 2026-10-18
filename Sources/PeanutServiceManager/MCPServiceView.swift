@@ -52,7 +52,7 @@ struct MCPServiceView: View {
     private var readiness: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 14) {
-                ManagerIconBadge(icon: "network", color: ManagerStyle.purple, size: 44, iconSize: 20, cornerRadius: 10)
+                ManagerIconBadge(icon: "network", color: ManagerStyle.purple, size: 44, iconSize: 20, cornerRadius: 8.5)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 8) {
                         Text(executableAvailable ? "MCP 服务程序已就绪" : "MCP 服务程序不可用")
@@ -64,10 +64,10 @@ struct MCPServiceView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text("本机 STDIO").font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(ManagerStyle.canvas).clipShape(Capsule()).foregroundColor(ManagerStyle.muted)
-                    .overlay(Capsule().strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
+                Text("本机 STDIO").font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(ManagerStyle.canvas).clipShape(RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous)).foregroundColor(ManagerStyle.muted)
+                    .overlay(RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
             }
             Divider().opacity(0.4)
             HStack(alignment: .top, spacing: 16) {
@@ -79,8 +79,8 @@ struct MCPServiceView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(ManagerStyle.field)
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
                 Button { copy(executablePath, label: "程序路径") } label: {
                     Label("复制路径", systemImage: "doc.on.doc")
                 }.buttonStyle(ManagerButtonStyle(.secondary))
@@ -95,7 +95,7 @@ struct MCPServiceView: View {
     private func section<Content: View>(_ title: String, subtitle: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .top, spacing: 10) {
-                ManagerIconBadge(icon: icon, color: ManagerStyle.purple, size: 32, iconSize: 15, cornerRadius: 8)
+                ManagerIconBadge(icon: icon, color: ManagerStyle.purple, size: 32, iconSize: 15, cornerRadius: 7)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 14, weight: .semibold))
                     Text(subtitle).font(.caption).foregroundColor(ManagerStyle.muted)
@@ -142,8 +142,8 @@ struct MCPServiceView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(ManagerStyle.field)
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
             Text("command 指向上方程序路径").font(.caption).foregroundColor(ManagerStyle.muted)
         }
     }

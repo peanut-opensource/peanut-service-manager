@@ -60,7 +60,7 @@ struct WorkspaceView: View {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
                     .resizable()
                     .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                     .shadow(color: Color.black.opacity(0.10), radius: 3, x: 0, y: 1)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("花生服务管理器")
@@ -158,11 +158,11 @@ struct WorkspaceView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9.5)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
                             .fill(isSelected ? color.opacity(0.12) : (hoveredNavigationID == item.0 ? ManagerStyle.ink.opacity(0.04) : Color.clear))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
                             .strokeBorder(isSelected ? color.opacity(0.25) : Color.clear, lineWidth: 0.8)
                     )
                     .contentShape(Rectangle())
@@ -758,8 +758,7 @@ struct WorkspaceView: View {
                     Button {
                         model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
                     } label: { Label("启用", systemImage: "play.fill") }
-                        .buttonStyle(ManagerButtonStyle(.primary))
-                        .tint(ManagerStyle.accent)
+                        .buttonStyle(ManagerButtonStyle(.start))
                         .controlSize(.small)
                         .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
                 }
@@ -781,7 +780,7 @@ struct WorkspaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(ManagerStyle.card)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous))
     }
 
     private func detailCard<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
@@ -794,8 +793,8 @@ struct WorkspaceView: View {
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous))
     }
 
     private func detailValue(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
@@ -834,10 +833,10 @@ struct WorkspaceView: View {
                     .frame(height: 150)
                     .background(ManagerStyle.field)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
                             .strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
                     .onAppear { proxy.scrollTo("log-bottom", anchor: .bottom) }
                     .onChange(of: model.processLogs[service.id] ?? "") { _ in proxy.scrollTo("log-bottom", anchor: .bottom) }
                 }

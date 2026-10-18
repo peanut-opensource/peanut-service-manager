@@ -205,7 +205,7 @@ struct ResourceCatalogView: View {
                                     .foregroundColor(resourceColor(resource.type))
                                     .frame(width: 30, height: 30)
                                     .background(resourceColor(resource.type).opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(resource.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
                                     Text(resourceSummary(resource)).font(.caption).foregroundColor(ManagerStyle.muted).lineLimit(1)
@@ -214,7 +214,7 @@ struct ResourceCatalogView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 5).padding(.horizontal, 6)
                             .background(model.selectedResourceID == resource.id ? ManagerStyle.selection : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
                         }
                         .buttonStyle(PlainButtonStyle())
                         .listRowBackground(Color.clear)

@@ -193,7 +193,7 @@ struct SettingsView: View {
     private func settingsCard<Content: View>(_ title: String, subtitle: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
         HStack(alignment: .top, spacing: 24) {
             HStack(alignment: .top, spacing: 10) {
-                ManagerIconBadge(icon: icon, color: color, size: 34, iconSize: 15, cornerRadius: 8)
+                ManagerIconBadge(icon: icon, color: color, size: 34, iconSize: 15, cornerRadius: 7.5)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 14, weight: .semibold)).foregroundColor(ManagerStyle.ink)
                     Text(subtitle).font(.caption).foregroundColor(ManagerStyle.muted)
