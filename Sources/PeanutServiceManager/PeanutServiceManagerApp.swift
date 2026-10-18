@@ -53,7 +53,7 @@ struct PeanutServiceManagerApp: App {
                     }
                 }
             }
-            .frame(minWidth: 820, minHeight: 560)
+            .frame(minWidth: 1100, minHeight: 640)
             .background(WindowLifecycleView())
         }
         .commands {
@@ -186,8 +186,8 @@ private final class WindowLifecycleNSView: NSView, NSWindowDelegate {
         guard let window, let screen = window.screen ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
         var frame = window.frame
-        frame.size.width = min(frame.width, visible.width)
-        frame.size.height = min(frame.height, visible.height)
+        frame.size.width = min(max(frame.width, 1440), visible.width)
+        frame.size.height = min(max(frame.height, 900), visible.height)
         frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
         frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
         guard frame != window.frame else { return }
