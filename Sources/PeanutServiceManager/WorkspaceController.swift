@@ -40,6 +40,19 @@ final class AppModel: ObservableObject {
         workspace = store.workspace
     }
 
+    func serviceDisplayName(_ service: Service) -> String {
+        for project in workspace.projects {
+            if let environment = project.environments.first(where: { $0.services.contains(where: { $0.id == service.id }) }) {
+                let prefix = environment.groups
+                    .filter { $0.serviceIDs.contains(service.id) }
+                    .map { "【\($0.name)】" }
+                    .joined()
+                return prefix + service.name
+            }
+        }
+        return service.name
+    }
+
     func update(_ change: (inout Workspace) -> Void) {
         do {
             try store.update(change)

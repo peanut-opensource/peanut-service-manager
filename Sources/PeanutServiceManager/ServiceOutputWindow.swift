@@ -20,7 +20,7 @@ enum ServiceOutputWindowPresenter {
             backing: .buffered,
             defer: false
         )
-        window.title = "\(service.name) · 运行输出"
+        window.title = "\(model.serviceDisplayName(service)) · 运行输出"
         window.minSize = NSSize(width: 520, height: 320)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ServiceOutputWindowView(model: model, service: service))
@@ -65,7 +65,7 @@ private struct ServiceOutputWindowView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(service.name).font(.title2.weight(.semibold))
+                    Text(model.serviceDisplayName(service)).font(.title2.weight(.semibold))
                     Text("标准输出与错误输出 · 仅显示当前运行期间内容")
                         .font(.caption).foregroundColor(.secondary)
                 }

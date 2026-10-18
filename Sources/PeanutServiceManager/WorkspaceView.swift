@@ -467,7 +467,7 @@ struct WorkspaceView: View {
                         .foregroundColor(processStateColor(item))
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name)
+                        Text(model.serviceDisplayName(item))
                             .font(.system(.body, design: .rounded).weight(.semibold))
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -522,8 +522,8 @@ struct WorkspaceView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text("服务详情").font(.caption.weight(.semibold)).foregroundColor(.secondary)
-                Text(service?.name ?? "未选择服务")
-                    .font(.system(.headline, design: .rounded).weight(.bold)).lineLimit(1)
+                Text(service.map { model.serviceDisplayName($0) } ?? "未选择服务")
+                    .font(.system(.headline, design: .rounded).weight(.bold)).lineLimit(2)
             }
             Spacer(minLength: 4)
             if let service { stateBadge(service) }

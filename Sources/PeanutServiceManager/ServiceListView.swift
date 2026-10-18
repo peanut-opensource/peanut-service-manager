@@ -213,7 +213,8 @@ private struct ServiceOverviewCard: View {
                     .frame(width: 5)
                 VStack(alignment: .leading, spacing: 5) {
                     Button(action: onSelect) {
-                        Text(service.name).font(.system(.title3, design: .rounded).weight(.bold)).lineLimit(1)
+                        Text(model.serviceDisplayName(service)).font(.system(.title3, design: .rounded).weight(.bold)).lineLimit(2)
+                            .help(model.serviceDisplayName(service))
                     }
                     .buttonStyle(.plain)
                     Text(entry.path).font(.caption).foregroundColor(.secondary).lineLimit(1)
