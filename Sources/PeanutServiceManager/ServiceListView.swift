@@ -8,7 +8,7 @@ private struct ServiceListEntry: Identifiable {
     let groups: [ServiceGroup]
 
     var id: UUID { service.id }
-    var path: String { "\(project.name) / \(environment.name)" }
+    var path: String { "\(environment.name) / \(project.name)" }
 }
 private struct ServiceGroupOption: Identifiable {
     let group: ServiceGroup
@@ -50,7 +50,7 @@ struct ServiceListView: View {
     private var groupOptions: [ServiceGroupOption] {
         model.workspace.projects.flatMap { project in
             project.environments.flatMap { environment in
-                environment.groups.map { ServiceGroupOption(group: $0, path: "\(project.name) / \(environment.name)") }
+                environment.groups.map { ServiceGroupOption(group: $0, path: "\(environment.name) / \(project.name)") }
             }
         }
     }
@@ -103,6 +103,12 @@ struct ServiceListView: View {
                 .frame(width: 190)
                 .help("分组是环境内的服务集合，可用于筛选和批量操作")
 
+                Button { model.refreshServiceStates() } label: {
+                    Label("刷新状态", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(ManagerButtonStyle(.secondary))
+                .help("只更新运行状态，不停止或重启服务")
+
                 Menu("批量操作") {
                     Button("启动当前结果") { startFilteredServices() }
                     Button("停止当前结果") { model.stopServices(filteredEntries.map(\.service.id)) }
@@ -120,7 +126,7 @@ struct ServiceListView: View {
                 GeometryReader { geometry in
                     ScrollView(.horizontal) {
                         serviceTable
-                            .frame(width: max(geometry.size.width, 1020), height: geometry.size.height)
+                            .frame(width: max(geometry.size.width, 1100), height: geometry.size.height)
                             .managerTableSurface()
                     }
                 }
@@ -150,6 +156,14 @@ struct ServiceListView: View {
 
     private var serviceTable: some View {
         Table(filteredEntries) {
+            TableColumn("环境") { entry in
+                Text(entry.environment.name).lineLimit(1).help(entry.environment.name)
+            }
+            .width(min: 145, ideal: 155)
+            TableColumn("项目") { entry in
+                Text(entry.project.name).lineLimit(1).help(entry.project.name)
+            }
+            .width(min: 100, ideal: 110)
             TableColumn("服务名称") { entry in
                 Button { onSelect(entry.project.id, entry.environment.id, entry.service.id) } label: {
                     Text(model.serviceDisplayName(entry.service))
@@ -159,15 +173,7 @@ struct ServiceListView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .width(min: 145, ideal: 180)
-            TableColumn("项目") { entry in
-                Text(entry.project.name).lineLimit(1).help(entry.project.name)
-            }
-            .width(min: 90, ideal: 105)
-            TableColumn("环境") { entry in
-                Text(entry.environment.name).lineLimit(1).help(entry.environment.name)
-            }
-            .width(min: 85, ideal: 95)
+            .width(min: 170, ideal: 220)
             TableColumn("分组") { entry in
                 let names = entry.groups.map(\.name).joined(separator: "、")
                 Text(names.isEmpty ? "未分组" : names)
@@ -264,7 +270,7 @@ private struct ServiceEntryState {
         case .exited: return ("已退出", ManagerStyle.muted, "minus.circle")
         case .failed: return ("启动失败", ManagerStyle.danger, "exclamationmark.triangle.fill")
         case .unknown: return ("状态未知", ManagerStyle.muted, "questionmark.circle")
-        case nil: return ("等待状态", ManagerStyle.muted, "circle")
+        case nil: return ("未启动", ManagerStyle.muted, "circle")
         }
     }
 
@@ -330,7 +336,7 @@ private struct ServiceOverviewCard: View {
             if snapshot?.pid != nil || snapshot?.exitCode != nil {
                 HStack(spacing: 12) {
                     if let pid = snapshot?.pid { Text("PID " + String(pid)) }
-                    if let code = snapshot?.exitCode { Text("退出码 " + String(code)).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger) }
+                    if let code = snapshot?.exitCode { Text("退出码 " + String(code)).foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : .secondary) }
                 }
                 .font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
             }
@@ -406,7 +412,7 @@ private struct ServiceTableStatus: View {
                 .padding(.horizontal, 8).padding(.vertical, 5)
                 .background(status.state.1.opacity(0.10)).clipShape(Capsule())
             if let code = status.snapshot?.exitCode {
-                Text("退出码 \(code)").font(.caption2).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger)
+                Text("退出码 \(code)").font(.caption2).foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : .secondary)
             }
         }
         .padding(.vertical, 5)
@@ -435,9 +441,9 @@ private struct ServiceEntryActions: View {
                 .disabled(!status.isActive)
             Button {
                 model.restartService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
-            } label: { actionLabel("重启", icon: "arrow.clockwise") }
+            } label: { actionLabel("重启", icon: "arrow.triangle.2.circlepath") }
                 .buttonStyle(ManagerButtonStyle(.secondary, iconOnly: compact))
-                .help("重启服务").accessibilityLabel("重启服务")
+                .help("重启服务：先停止，再重新启动").accessibilityLabel("重启服务")
                 .disabled(!status.isActive)
             Menu {
                 Button("编辑服务", action: onEdit)
@@ -453,12 +459,12 @@ private struct ServiceEntryActions: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(ManagerStyle.ink)
                     .frame(width: 28, height: 28)
-                    .managerIconSurface()
             }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .frame(width: 28, height: 28)
                 .fixedSize()
+                .managerIconSurface()
                 .help("编辑、详情与实时输出").accessibilityLabel("服务更多操作")
         }
         .controlSize(.small)

@@ -8,7 +8,7 @@ struct WorkspaceView: View {
     @State private var editor: WorkspaceEditorPresentation?
     @State private var activeTab = 0
     @State private var hoveredNavigationID: Int?
-    @State private var perspective: WorkspacePerspective = .project
+    @State private var perspective: WorkspacePerspective = .environment
     @State private var pendingEnvironmentRemoval: EnvironmentRemovalTarget?
 
     private var project: Project? {
@@ -180,18 +180,19 @@ struct WorkspaceView: View {
     }
 
     private var workspaceHeader: some View {
-        ManagerPageHeader(title: "服务管理", subtitle: "按项目或环境组织服务", icon: "square.stack.3d.up.fill") {
+        ManagerPageHeader(title: "服务管理", subtitle: "按环境或项目组织服务", icon: "square.stack.3d.up.fill") {
             MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
             MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
         }
         .overlay(alignment: .center) {
             Picker("管理视角", selection: $perspective) {
-                Label("项目视角", systemImage: "folder.fill").tag(WorkspacePerspective.project)
-                Label("环境视角", systemImage: "square.stack.3d.up.fill").tag(WorkspacePerspective.environment)
+                Text("环境").tag(WorkspacePerspective.environment)
+                Text("项目").tag(WorkspacePerspective.project)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .controlSize(.large)
-            .frame(width: 280)
+            .frame(width: 220)
             .padding(6)
             .background(ManagerStyle.selection)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -693,7 +694,7 @@ struct WorkspaceView: View {
                         .disabled(!isActive(service))
                     Button {
                         model.restartService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
-                    } label: { Label("重启", systemImage: "arrow.clockwise") }
+                    } label: { Label("重启", systemImage: "arrow.triangle.2.circlepath") }
                         .buttonStyle(ManagerButtonStyle(.secondary))
                         .controlSize(.small)
                         .disabled(!isActive(service))
@@ -1650,7 +1651,7 @@ private struct ServiceEditor: View {
     }
 
     private var editorHeight: CGFloat {
-        max(420, min(650, (NSScreen.main?.visibleFrame.height ?? 760) - 110))
+        max(420, min(760, (NSScreen.main?.visibleFrame.height ?? 760) - 110))
     }
 
     private var validPort: Bool {

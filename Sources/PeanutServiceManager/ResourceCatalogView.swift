@@ -477,13 +477,13 @@ private struct ResourceEditor: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ManagerFormCard("基本信息", subtitle: "名称和类型用于识别资源及其适用范围。", icon: "tag") {
                         VStack(alignment: .leading, spacing: 13) {
-                            ManagerTextField(title: "资源名称", placeholder: "例如 本机 MySQL", text: $draft.name)
+                            ManagerTextField(title: "资源名称", placeholder: "例如 本机 \(draft.type.displayName)", text: $draft.name)
                             Picker("资源类型", selection: $draft.type) {
                                 ForEach(ResourceType.allCases, id: \.self) { Text($0.displayName).tag($0) }
                             }
                             .pickerStyle(.menu)
                             HStack(spacing: 12) {
-                                optionalField("版本", value: $draft.version, placeholder: "例如 8.4")
+                                optionalField("版本", value: $draft.version, placeholder: draft.type == .node ? "例如 22.x" : "例如 8.4")
                                 optionalField("来源", value: $draft.source, placeholder: "例如 Homebrew")
                             }
                             HStack(spacing: 12) {
@@ -495,7 +495,7 @@ private struct ResourceEditor: View {
 
                     if draft.type == .php || draft.type == .node || draft.type == .other {
                         ManagerFormCard("本机运行时", subtitle: "使用可执行文件的完整路径，便于准确选择版本。", icon: "terminal") {
-                            optionalField("可执行文件路径", value: $draft.executablePath, placeholder: "/opt/homebrew/bin/php")
+                            optionalField("可执行文件路径", value: $draft.executablePath, placeholder: draft.type == .node ? "/opt/homebrew/bin/node" : "/opt/homebrew/bin/php")
                         }
                     }
 

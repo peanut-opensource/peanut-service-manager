@@ -213,6 +213,8 @@ private struct ManagerButtonBody: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
+    private var cornerRadius: CGFloat { iconOnly ? 8 : ManagerStyle.radius }
+
     private var height: CGFloat {
         switch controlSize {
         case .mini: return 24
@@ -273,15 +275,15 @@ private struct ManagerButtonBody: View {
             .padding(.horizontal, iconOnly ? 0 : (controlSize == .mini ? 9 : 12))
             .frame(minWidth: height, minHeight: height)
             .background {
-                RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(background)
                     .overlay {
-                        RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .fill(interactionColor.opacity(isEnabled ? (configuration.isPressed ? 0.14 : (isHovered ? 0.08 : 0)) : 0))
                     }
             }
-            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).strokeBorder(border, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(border, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: tone == .primary && isEnabled ? ManagerStyle.accent.opacity(configuration.isPressed ? 0.05 : 0.18) : .clear, radius: 3, x: 0, y: 1)
             .opacity(isEnabled ? 1 : 0.42)
             .onHover { isHovered = $0 }
@@ -322,10 +324,10 @@ private struct ManagerIconSurface: ViewModifier {
             .font(.system(size: controlSize == .mini ? 11 : 12, weight: .semibold))
             .foregroundColor(ManagerStyle.ink)
             .frame(width: size, height: size)
-            .background(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).fill(ManagerStyle.card))
-            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).fill(ManagerStyle.ink.opacity(isHovered && isEnabled ? 0.08 : 0)))
-            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ManagerStyle.card))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ManagerStyle.ink.opacity(isHovered && isEnabled ? 0.08 : 0)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .opacity(isEnabled ? 1 : 0.42)
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.12), value: isHovered)
