@@ -24,29 +24,27 @@ struct WorkspaceView: View {
 
     var body: some View {
         TabView(selection: $activeTab) {
-            configurationView
-                .tabItem { Label("工作区", systemImage: "square.grid.2x2.fill") }
+            servicesView(.table)
+                .tabItem { Label("服务列表", systemImage: "list.bullet.rectangle") }
                 .tag(0)
-            ServiceListView(
-                model: model,
-                onEdit: { projectID, environmentID, service in
-                    editor = .service(projectID, environmentID, service, isNew: false)
-                },
-                onSelect: { projectID, environmentID, serviceID in
-                    model.selectedProjectID = projectID
-                    model.selectedEnvironmentID = environmentID
-                    model.selectedServiceID = serviceID
-                    activeTab = 0
-                }
-            )
-            .tabItem { Label("服务列表", systemImage: "list.bullet.rectangle.portrait") }
-            .tag(1)
-            ResourceCatalogView(model: model)
-                .tabItem { Label("资源", systemImage: "externaldrive.fill") }
+            servicesView(.cards)
+                .tabItem { Label("服务卡片", systemImage: "square.grid.2x2") }
+                .tag(1)
+            configurationView
+                .tabItem { Label("服务管理", systemImage: "square.stack.3d.up.fill") }
                 .tag(2)
-            SettingsView(model: model)
-                .tabItem { Label("设置", systemImage: "slider.horizontal.3") }
+            ResourceCatalogView(model: model, presentation: .list, onManage: { _ in activeTab = 4 })
+                .tabItem { Label("资源列表", systemImage: "list.bullet.rectangle.portrait") }
                 .tag(3)
+            ResourceCatalogView(model: model, presentation: .management)
+                .tabItem { Label("资源管理", systemImage: "externaldrive.fill") }
+                .tag(4)
+            MCPServiceView(model: model)
+                .tabItem { Label("MCP 服务", systemImage: "network") }
+                .tag(5)
+            SettingsView(model: model)
+                .tabItem { Label("系统设置", systemImage: "slider.horizontal.3") }
+                .tag(6)
         }
         .accentColor(ManagerStyle.accent)
         .frame(minWidth: 1100, minHeight: 640)
@@ -57,6 +55,17 @@ struct WorkspaceView: View {
         .onAppear {
             model.startServicesMarkedForManagerLaunch()
         }
+    }
+
+    private func servicesView(_ presentation: ServicePresentation) -> some View {
+        ServiceListView(model: model, presentation: presentation, onEdit: { projectID, environmentID, service in
+            editor = .service(projectID, environmentID, service, isNew: false)
+        }, onSelect: { projectID, environmentID, serviceID in
+            model.selectedProjectID = projectID
+            model.selectedEnvironmentID = environmentID
+            model.selectedServiceID = serviceID
+            activeTab = 2
+        })
     }
 
     private var configurationView: some View {
@@ -114,23 +123,29 @@ struct WorkspaceView: View {
     }
 
     private var workspaceHeader: some View {
-        ManagerPageHeader(title: "工作区", subtitle: "按项目、环境和服务浏览本机配置", icon: "square.grid.2x2.fill") {
-            Picker("浏览视角", selection: $perspective) {
-                Text("项目视角").tag(WorkspacePerspective.project)
-                Text("环境视角").tag(WorkspacePerspective.environment)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 170)
+        ManagerPageHeader(title: "服务管理", subtitle: "管理项目、环境及其服务配置", icon: "square.stack.3d.up.fill") {
             MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
             MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
+        }
+        .overlay(alignment: .center) {
+            Picker("管理视角", selection: $perspective) {
+                Label("项目视角", systemImage: "folder.fill").tag(WorkspacePerspective.project)
+                Label("环境视角", systemImage: "square.stack.3d.up.fill").tag(WorkspacePerspective.environment)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.large)
+            .frame(width: 310)
+            .padding(6)
+            .background(ManagerStyle.selection)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .help("从项目或环境出发管理双向关联")
         }
     }
 
     private var sharedEnvironmentColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
             columnHeader("环境", count: model.workspace.environments.count) {
-                guard let project = project ?? uniqueProjects.first else { return }
-                editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
+                editor = .newSharedEnvironment(ProjectEnvironment(name: "开发"))
             }
             List {
                 ForEach(model.workspace.environments.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { item in
@@ -157,7 +172,7 @@ struct WorkspaceView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .overlay { if model.workspace.environments.isEmpty { emptyMessage("先创建一个项目环境") } }
+            .overlay { if model.workspace.environments.isEmpty { emptyMessage("添加环境后，可关联已有项目") } }
         }
         .background(ManagerStyle.canvas)
     }
@@ -168,6 +183,13 @@ struct WorkspaceView: View {
                 Text("使用项目").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
                 Text("\(projectsForSelectedEnvironment.count)").font(.caption2.weight(.semibold)).foregroundColor(.secondary)
                 Spacer()
+                Button {
+                    if let environmentID = model.selectedEnvironmentID { editor = .associateProjects(environmentID) }
+                } label: { Image(systemName: "link").font(.system(size: 11, weight: .bold)) }
+                    .buttonStyle(.borderless)
+                    .disabled(model.selectedEnvironmentID == nil)
+                    .help("为当前环境关联项目")
+                    .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
             }.padding(.horizontal, 14).padding(.vertical, 11)
             List {
                 ForEach(projectsForSelectedEnvironment) { item in
@@ -184,7 +206,7 @@ struct WorkspaceView: View {
                                 .foregroundColor(model.selectedProjectID == item.id ? ManagerStyle.accent : .secondary)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
-                                Text("\(target?.services.count ?? 0) 個服務 · \(target?.groups.count ?? 0) 個分組")
+                                Text("\(target?.services.count ?? 0) 个服务 · \(target?.groups.count ?? 0) 个分组")
                                     .font(.caption).foregroundColor(.secondary)
                             }
                             Spacer(minLength: 0)
@@ -209,9 +231,9 @@ struct WorkspaceView: View {
 
     private func selectSharedEnvironment(_ id: UUID) {
         model.selectedEnvironmentID = id
-        if !projectsForSelectedEnvironment.contains(where: { $0.id == model.selectedProjectID }),
-           let project = projectsForSelectedEnvironment.first {
-            model.selectedProjectID = project.id
+        selectedGroupFilter = .all
+        if !projectsForSelectedEnvironment.contains(where: { $0.id == model.selectedProjectID }) {
+            model.selectedProjectID = projectsForSelectedEnvironment.first?.id
         }
         model.selectedServiceID = nil
         selectedServiceIDs.removeAll()
@@ -727,10 +749,21 @@ struct WorkspaceView: View {
             EnvironmentEditor(environment: environment, isNew: isNew) {
                 saveEnvironment($0, projectID: projectID)
             }
+        case .newSharedEnvironment(let environment):
+            EnvironmentEditor(environment: environment, isNew: true) { edited in
+                model.update { workspace in
+                    workspace.environments.append(WorkspaceEnvironment(id: edited.id, name: edited.name))
+                }
+                guard model.errorMessage == nil else { return }
+                model.selectedEnvironmentID = edited.id
+                model.selectedProjectID = nil
+                model.selectedServiceID = nil
+                editor = nil
+            }
         case .groups(let projectID, let environment):
             GroupsEditor(environment: environment) { saveGroups($0, projectID: projectID) }
         case .service(let projectID, let environmentID, let service, let isNew):
-            let groups = project?.environments.first(where: { $0.id == environmentID })?.groups ?? []
+            let groups = model.workspace.projects.first(where: { $0.id == projectID })?.environments.first(where: { $0.id == environmentID })?.groups ?? []
             ServiceEditor(service: service, groups: groups, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) { edited, groupIDs in
                 saveService(edited, groupIDs: groupIDs, projectID: projectID, environmentID: environmentID)
             }
@@ -741,6 +774,14 @@ struct WorkspaceView: View {
                 associatedIDs: Set(model.workspace.projects.first(where: { $0.id == projectID })?.environments.map(\.id) ?? [])
             ) { selectedIDs in
                 associateEnvironments(selectedIDs, projectID: projectID)
+            }
+        case .associateProjects(let environmentID):
+            ProjectAssociationEditor(
+                environmentName: model.workspace.environments.first(where: { $0.id == environmentID })?.name ?? "环境",
+                projects: uniqueProjects,
+                associatedIDs: Set(uniqueProjects.filter { $0.environments.contains(where: { $0.id == environmentID }) }.map(\.id))
+            ) { selectedIDs in
+                associateProjects(selectedIDs, environmentID: environmentID)
             }
         }
     }
@@ -793,6 +834,23 @@ struct WorkspaceView: View {
             }
         }
         guard model.errorMessage == nil else { return }
+        editor = nil
+    }
+
+    private func associateProjects(_ ids: Set<UUID>, environmentID: UUID) {
+        model.update { workspace in
+            guard let environment = workspace.environments.first(where: { $0.id == environmentID }) else { return }
+            for index in workspace.projects.indices where ids.contains(workspace.projects[index].id) {
+                if !workspace.projects[index].environments.contains(where: { $0.id == environmentID }) {
+                    workspace.projects[index].environments.append(ProjectEnvironment(id: environment.id, name: environment.name))
+                }
+            }
+        }
+        guard model.errorMessage == nil else { return }
+        if !projectsForSelectedEnvironment.contains(where: { $0.id == model.selectedProjectID }) {
+            model.selectedProjectID = projectsForSelectedEnvironment.first?.id
+        }
+        model.selectedServiceID = nil
         editor = nil
     }
 
@@ -1017,17 +1075,21 @@ private struct EnvironmentRemovalTarget {
 private enum WorkspaceEditorPresentation: Identifiable {
     case project(Project, isNew: Bool)
     case environment(UUID, ProjectEnvironment, isNew: Bool)
+    case newSharedEnvironment(ProjectEnvironment)
     case groups(UUID, ProjectEnvironment)
     case service(UUID, UUID, Service, isNew: Bool)
     case associateEnvironments(UUID)
+    case associateProjects(UUID)
 
     var id: UUID {
         switch self {
         case .project(let project, _): return project.id
         case .environment(_, let environment, _): return environment.id
+        case .newSharedEnvironment(let environment): return environment.id
         case .groups(_, let environment): return environment.id
         case .service(_, _, let service, _): return service.id
         case .associateEnvironments(let projectID): return projectID
+        case .associateProjects(let environmentID): return environmentID
         }
     }
 }
@@ -1258,7 +1320,7 @@ private struct EnvironmentAssociationEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ManagerEditorHeader(title: "关联已有环境", subtitle: "将共享环境关联到 (projectName)；各项目的服务配置仍各自独立。", icon: "link")
+            ManagerEditorHeader(title: "关联已有环境", subtitle: "将共享环境关联到 \(projectName)；各项目的服务配置仍各自独立。", icon: "link")
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ManagerFormCard("可关联环境", subtitle: "可一次选择多个环境。已关联的环境不会重复显示。", icon: "square.stack.3d.up") {
@@ -1277,7 +1339,7 @@ private struct EnvironmentAssociationEditor: View {
                                     )) {
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(environment.name).font(.system(.callout, design: .rounded).weight(.semibold))
-                                            Text("共享环境 · ID (environment.id.uuidString.prefix(8))")
+                                            Text("共享环境 · ID \(environment.id.uuidString.prefix(8))")
                                                 .font(.caption).foregroundColor(.secondary)
                                         }
                                     }
@@ -1291,6 +1353,56 @@ private struct EnvironmentAssociationEditor: View {
                 .padding(18)
             }
             .background(ManagerStyle.canvas)
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !selectedIDs.isEmpty) {
+                onSave(selectedIDs)
+            }
+        }
+        .frame(width: 560, height: 480)
+        .background(ManagerStyle.canvas)
+    }
+}
+
+private struct ProjectAssociationEditor: View {
+    @Environment(\.presentationMode) private var presentationMode
+    let environmentName: String
+    let projects: [Project]
+    let associatedIDs: Set<UUID>
+    let onSave: (Set<UUID>) -> Void
+    @State private var selectedIDs: Set<UUID> = []
+
+    private var available: [Project] {
+        projects.filter { !associatedIDs.contains($0.id) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ManagerEditorHeader(title: "关联项目", subtitle: "为 \(environmentName) 选择项目，各项目的服务与分组独立配置。", icon: "link")
+            ScrollView {
+                ManagerFormCard("可关联项目", subtitle: "可一次选择多个项目，已有的关联不会重复添加。", icon: "folder.fill") {
+                    if available.isEmpty {
+                        Text(projects.isEmpty ? "还没有项目，请先在项目视角中创建。" : "此环境已关联全部项目。")
+                            .font(.callout).foregroundColor(.secondary)
+                    } else {
+                        ForEach(available) { project in
+                            Toggle(isOn: Binding(
+                                get: { selectedIDs.contains(project.id) },
+                                set: { included in
+                                    if included { selectedIDs.insert(project.id) }
+                                    else { selectedIDs.remove(project.id) }
+                                }
+                            )) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(project.name).font(.callout.weight(.semibold))
+                                    Text("已关联 \(project.environments.count) 个环境").font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            .toggleStyle(.checkbox).padding(.vertical, 7)
+                        }
+                    }
+                }
+                .padding(18)
+            }
             editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !selectedIDs.isEmpty) {
                 onSave(selectedIDs)
             }

@@ -17,8 +17,14 @@ private struct ServiceGroupOption: Identifiable {
     var label: String { "\(group.name) · \(path)" }
 }
 
+enum ServicePresentation {
+    case table
+    case cards
+}
+
 struct ServiceListView: View {
     @ObservedObject var model: AppModel
+    let presentation: ServicePresentation
     let onEdit: (UUID, UUID, Service) -> Void
     let onSelect: (UUID, UUID, UUID) -> Void
 
@@ -96,15 +102,25 @@ struct ServiceListView: View {
                     Button("停止当前结果") { model.stopServices(filteredEntries.map(\.service.id)) }
                     Button("重启当前结果") { restartFilteredServices() }
                 }
+                .fixedSize()
                 .disabled(filteredEntries.isEmpty)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
 
-            ScrollView {
-                if filteredEntries.isEmpty {
-                    emptyState
-                } else {
+            if filteredEntries.isEmpty {
+                ScrollView { emptyState }
+            } else if presentation == .table {
+                GeometryReader { geometry in
+                    ScrollView(.horizontal) {
+                        serviceTable
+                            .frame(width: max(geometry.size.width, 1120), height: geometry.size.height)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            } else {
+                ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 350), spacing: 16, alignment: .top)], spacing: 16) {
                         ForEach(filteredEntries) { entry in
                             ServiceOverviewCard(
@@ -119,15 +135,60 @@ struct ServiceListView: View {
                     .padding(.bottom, 24)
                 }
             }
-            .background(ManagerStyle.canvas)
         }
         .background(ManagerStyle.canvas)
         .onAppear { model.observeWorkspace() }
         .onDisappear { model.stopObservingWorkspace() }
     }
 
+    private var serviceTable: some View {
+        Table(filteredEntries) {
+            TableColumn("服务名称") { entry in
+                Button { onSelect(entry.project.id, entry.environment.id, entry.service.id) } label: {
+                    Text(model.serviceDisplayName(entry.service))
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                        .help(model.serviceDisplayName(entry.service))
+                }
+                .buttonStyle(.plain)
+            }
+            .width(min: 180, ideal: 220)
+            TableColumn("项目 / 环境") { entry in
+                Text(entry.path).lineLimit(2).help(entry.path)
+            }
+            .width(min: 145, ideal: 170)
+            TableColumn("分组") { entry in
+                let names = entry.groups.map(\.name).joined(separator: "、")
+                Text(names.isEmpty ? "未分组" : names)
+                    .foregroundColor(.secondary).lineLimit(2).help(names.isEmpty ? "未分组" : names)
+            }
+            .width(min: 100, ideal: 120)
+            TableColumn("运行状态 / PID") { entry in
+                ServiceTableStatus(entry: entry, model: model)
+            }
+            .width(min: 120, ideal: 130)
+            TableColumn("访问入口") { entry in
+                let address = ServiceEntryState(entry: entry, model: model).accessAddress
+                Text(address ?? "未登记")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(address == nil ? .secondary : .primary)
+                    .lineLimit(2).help(address ?? "未登记域名和端口")
+                    .textSelection(.enabled)
+            }
+            .width(min: 145, ideal: 170)
+            TableColumn("操作") { entry in
+                ServiceEntryActions(
+                    entry: entry, model: model,
+                    onEdit: { onEdit(entry.project.id, entry.environment.id, entry.service) },
+                    onSelect: { onSelect(entry.project.id, entry.environment.id, entry.service.id) }
+                )
+            }
+            .width(270)
+        }
+    }
+
     private var header: some View {
-        ManagerPageHeader(title: "服务总览", subtitle: "按服务查看运行状态、访问入口和启动配置", icon: "list.bullet.rectangle.portrait.fill") {
+        ManagerPageHeader(title: presentation == .table ? "服务列表" : "服务卡片", subtitle: "按服务查看运行状态、访问入口和启动配置", icon: presentation == .table ? "list.bullet.rectangle" : "square.grid.2x2.fill") {
             overviewMetric(title: "服务", value: entries.count, icon: "server.rack", color: ManagerStyle.accent)
             overviewMetric(title: "运行中", value: runningCount, icon: "checkmark.circle.fill", color: ManagerStyle.success)
         }
@@ -153,7 +214,7 @@ struct ServiceListView: View {
                 .font(.system(size: 30)).foregroundColor(ManagerStyle.accent.opacity(0.7))
             Text(entries.isEmpty ? "还没有登记服务" : "没有匹配的服务")
                 .font(.system(.title3, design: .rounded).weight(.semibold))
-            Text(entries.isEmpty ? "在工作区选择项目和环境后添加服务。" : "调整搜索内容或分组筛选条件。")
+            Text(entries.isEmpty ? "在服务管理中选择项目和环境后添加服务。" : "调整搜索内容或分组筛选条件。")
                 .font(.callout).foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 300)
@@ -172,18 +233,14 @@ struct ServiceListView: View {
     }
 }
 
-private struct ServiceOverviewCard: View {
+@MainActor
+private struct ServiceEntryState {
     let entry: ServiceListEntry
-    @ObservedObject var model: AppModel
-    let onEdit: () -> Void
-    let onSelect: () -> Void
-
+    let model: AppModel
     private var service: Service { entry.service }
-    private var visibleArguments: [String] { service.arguments.filter { !$0.isEmpty } }
-    private var snapshot: SupervisorServiceSnapshot? { model.processSnapshots[service.id] }
-    private var isActive: Bool { snapshot?.state == .starting || snapshot?.state == .running || snapshot?.state == .stopping }
-    private var serviceDescription: String { service.description.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var state: (String, Color, String) {
+    var snapshot: SupervisorServiceSnapshot? { model.processSnapshots[service.id] }
+    var isActive: Bool { snapshot?.state == .starting || snapshot?.state == .running || snapshot?.state == .stopping }
+    var state: (String, Color, String) {
         if model.serviceErrors[service.id] != nil || snapshot?.state == .failed {
             return ("启动失败", ManagerStyle.danger, "exclamationmark.triangle.fill")
         }
@@ -198,12 +255,28 @@ private struct ServiceOverviewCard: View {
         }
     }
 
-    private var accessAddress: String? {
+    var accessAddress: String? {
         let domain = service.domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !domain.isEmpty || service.port != nil else { return nil }
         if domain.isEmpty { return service.port.map { "端口 \($0)" } }
         return service.port.map { "\(domain):\($0)" } ?? domain
     }
+
+}
+
+private struct ServiceOverviewCard: View {
+    let entry: ServiceListEntry
+    @ObservedObject var model: AppModel
+    let onEdit: () -> Void
+    let onSelect: () -> Void
+
+    private var service: Service { entry.service }
+    private var visibleArguments: [String] { service.arguments.filter { !$0.isEmpty } }
+    private var status: ServiceEntryState { ServiceEntryState(entry: entry, model: model) }
+    private var snapshot: SupervisorServiceSnapshot? { status.snapshot }
+    private var state: (String, Color, String) { status.state }
+    private var accessAddress: String? { status.accessAddress }
+    private var serviceDescription: String { service.description.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -217,7 +290,7 @@ private struct ServiceOverviewCard: View {
                             .help(model.serviceDisplayName(service))
                     }
                     .buttonStyle(.plain)
-                    Text(entry.path).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                    Text(entry.path).font(.caption).foregroundColor(.secondary).lineLimit(1).help(entry.path)
                 }
                 Spacer(minLength: 5)
                 Label(state.0, systemImage: state.2)
@@ -273,32 +346,9 @@ private struct ServiceOverviewCard: View {
                     ForEach(entry.groups) { group in metadataChip(group.name, icon: "tag.fill") }
                 }
                 Spacer(minLength: 2)
-                Button("编辑") { onEdit() }
-                    .controlSize(.small)
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    model.startService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: service.id)
-                } label: { Label("启动", systemImage: "play.fill") }
-                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
-                    .disabled(isActive || service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button { model.stopService(serviceID: service.id) } label: { Label("停止", systemImage: "stop.fill") }
-                    .disabled(!isActive)
-                Button {
-                    model.restartService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: service.id)
-                } label: { Label("重启", systemImage: "arrow.clockwise") }
-                    .disabled(!isActive)
-                Spacer()
-                Button {
-                    model.selectedProjectID = entry.project.id
-                    model.selectedEnvironmentID = entry.environment.id
-                    model.selectedServiceID = service.id
-                    ServiceOutputWindowPresenter.show(model: model, service: service)
-                } label: { Image(systemName: "terminal") }
-                    .help("查看实时输出")
-            }
-            .controlSize(.small)
+            ServiceEntryActions(entry: entry, model: model, onEdit: onEdit, onSelect: onSelect)
         }
         .padding(16)
         .background(ManagerStyle.card)
@@ -327,5 +377,64 @@ private struct ServiceOverviewCard: View {
             .background(ManagerStyle.canvas)
             .clipShape(Capsule())
             .lineLimit(1)
+    }
+}
+
+private struct ServiceTableStatus: View {
+    let entry: ServiceListEntry
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let status = ServiceEntryState(entry: entry, model: model)
+        VStack(alignment: .leading, spacing: 3) {
+            Label(status.state.0, systemImage: status.state.2)
+                .foregroundColor(status.state.1)
+            if let pid = status.snapshot?.pid {
+                Text("PID \(pid)").font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary)
+            }
+            if let code = status.snapshot?.exitCode {
+                Text("退出码 \(code)").font(.caption2).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger)
+            }
+        }
+        .padding(.vertical, 5)
+    }
+}
+
+private struct ServiceEntryActions: View {
+    let entry: ServiceListEntry
+    @ObservedObject var model: AppModel
+    let onEdit: () -> Void
+    let onSelect: () -> Void
+
+    var body: some View {
+        let status = ServiceEntryState(entry: entry, model: model)
+        HStack(spacing: 6) {
+            Button {
+                model.startService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
+            } label: { Label("启动", systemImage: "play.fill") }
+                .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                .disabled(status.isActive || entry.service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button { model.stopService(serviceID: entry.service.id) } label: { Label("停止", systemImage: "stop.fill") }
+                .disabled(!status.isActive)
+            Button {
+                model.restartService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
+            } label: { Label("重启", systemImage: "arrow.clockwise") }
+                .disabled(!status.isActive)
+            Menu {
+                Button("编辑服务", action: onEdit)
+                Button("查看详情", action: onSelect)
+                Button("查看实时输出") {
+                    model.selectedProjectID = entry.project.id
+                    model.selectedEnvironmentID = entry.environment.id
+                    model.selectedServiceID = entry.service.id
+                    ServiceOutputWindowPresenter.show(model: model, service: entry.service)
+                }
+            } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("编辑、详情与实时输出")
+        }
+        .controlSize(.small)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }

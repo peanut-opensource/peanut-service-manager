@@ -1,8 +1,16 @@
 import SwiftUI
 
+enum ResourcePresentation {
+    case list
+    case management
+}
+
 struct ResourceCatalogView: View {
     @ObservedObject var model: AppModel
+    var presentation: ResourcePresentation = .management
+    var onManage: ((UUID) -> Void)? = nil
     @State private var editingResource: ResourceRecord?
+    @State private var searchText = ""
     @State private var isCreatingResource = false
     @State private var bindingProjectID: UUID?
     @State private var bindingEnvironmentID: UUID?
@@ -27,6 +35,135 @@ struct ResourceCatalogView: View {
     }
 
     var body: some View {
+        Group {
+            if presentation == .list {
+                resourceList
+            } else {
+                management
+            }
+        }
+        .background(ManagerStyle.canvas)
+        .frame(minWidth: 1100)
+        .sheet(isPresented: $isCreatingResource) {
+            ResourceEditor(resource: nil) { save($0) }
+        }
+        .sheet(item: $editingResource) { resource in
+            ResourceEditor(resource: resource) { save($0) }
+        }
+        .alert(item: errorBinding) { message in
+            Alert(title: Text("无法保存配置"), message: Text(message.message), dismissButton: .default(Text("好")))
+        }
+        .confirmationDialog("删除资源？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }), titleVisibility: .visible) {
+            Button("删除资源及其环境绑定", role: .destructive) { confirmDelete() }
+            Button("取消", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text("资源配置、项目环境绑定及该资源已加密保存的密码将被删除。此操作无法撤销。")
+        }
+        .onAppear(perform: chooseInitialTarget)
+        .onChange(of: model.selectedResourceID) { _ in probeMessage = nil }
+    }
+
+    private var resourceList: some View {
+        VStack(spacing: 0) {
+            ManagerPageHeader(title: "资源列表", subtitle: "查看资源版本、连接地址及项目环境用途", icon: "list.bullet.rectangle") {
+                Text("\(model.workspace.resources.count) 项")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundColor(ManagerStyle.accent)
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                TextField("搜索名称、类型、版本、地址、用途或项目环境", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundColor(.secondary)
+                        .help("清除搜索")
+                }
+                Spacer(minLength: 16)
+                Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+            }
+            .padding(16)
+            if listedResources.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: searchText.isEmpty ? "externaldrive" : "magnifyingglass")
+                        .font(.system(size: 32)).foregroundColor(ManagerStyle.accent)
+                    Text(searchText.isEmpty ? "尚未登记资源" : "没有匹配的资源")
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                    Text(searchText.isEmpty ? "登记资源后，可在这里查看资源信息及项目环境绑定。" : "尝试其他名称、地址或项目环境。")
+                        .foregroundColor(.secondary)
+                    if searchText.isEmpty {
+                        Button("登记资源") { isCreatingResource = true }
+                    } else {
+                        Button("清除搜索") { searchText = "" }
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(listedResources) {
+                    TableColumn("名称") { resource in
+                        HStack(spacing: 7) {
+                            Image(systemName: resourceIcon(resource.type)).foregroundColor(ManagerStyle.accent)
+                            Text(resource.name).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
+                        }.help(resource.name)
+                    }.width(min: 130, ideal: 160)
+                    TableColumn("类型") { resource in Text(resource.type.displayName).lineLimit(1) }
+                        .width(min: 65, ideal: 85, max: 100)
+                    TableColumn("版本") { resource in listCell(resource.version ?? "—") }
+                        .width(min: 50, ideal: 65, max: 90)
+                    TableColumn("Host / Port") { resource in listCell(listAddress(resource)) }
+                        .width(min: 110, ideal: 140)
+                    TableColumn("用途") { resource in listCell(resource.purpose ?? "—") }
+                        .width(min: 100, ideal: 130)
+                    TableColumn("绑定项目 / 环境") { resource in listCell(bindingSummary(resource)) }
+                        .width(min: 150, ideal: 220)
+                    TableColumn("操作") { resource in
+                        HStack(spacing: 12) {
+                            Button("编辑") { editingResource = resource }
+                            Button("管理") { openManagement(resource) }
+                        }.buttonStyle(.borderless)
+                    }.width(100)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 16)
+            }
+        }
+    }
+
+    private var listedResources: [ResourceRecord] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.workspace.resources.filter { resource in
+            query.isEmpty || [resource.name, resource.type.displayName, resource.version ?? "", listAddress(resource), resource.purpose ?? "", bindingSummary(resource)]
+                .contains { $0.localizedCaseInsensitiveContains(query) }
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func listCell(_ value: String) -> some View {
+        Text(value).lineLimit(1).truncationMode(.middle).help(value)
+    }
+
+    private func listAddress(_ resource: ResourceRecord) -> String {
+        switch (resource.host, resource.port) {
+        case let (host?, port?): return "\(host):\(port)"
+        case let (host?, nil): return host
+        case let (nil, port?): return "端口 \(port)"
+        case (nil, nil): return "—"
+        }
+    }
+
+    private func bindingSummary(_ resource: ResourceRecord) -> String {
+        let names = model.workspace.bindings.filter { $0.resourceID == resource.id }.map { binding in
+            let project = model.workspace.projects.first { $0.id == binding.projectID }
+            let environment = project?.environments.first { $0.id == binding.environmentID }
+            return "\(project?.name ?? "未知项目") / \(environment?.name ?? "未知环境")"
+        }.sorted()
+        return names.isEmpty ? "未绑定" : names.joined(separator: "；")
+    }
+
+    private func openManagement(_ resource: ResourceRecord) {
+        model.selectedResourceID = resource.id
+        onManage?(resource.id)
+    }
+
+    private var management: some View {
         VStack(spacing: 0) {
             ManagerPageHeader(title: "资源管理", subtitle: "登记并关联项目环境所需的本地资源", icon: "externaldrive.fill") {
                 Text("\(model.workspace.resources.count) 项")
@@ -84,25 +221,6 @@ struct ResourceCatalogView: View {
                 .background(ManagerStyle.panel)
             }
         }
-        .background(ManagerStyle.canvas)
-        .frame(minWidth: 1100, minHeight: 640)
-        .sheet(isPresented: $isCreatingResource) {
-            ResourceEditor(resource: nil) { save($0) }
-        }
-        .sheet(item: $editingResource) { resource in
-            ResourceEditor(resource: resource) { save($0) }
-        }
-        .alert(item: errorBinding) { message in
-            Alert(title: Text("无法保存配置"), message: Text(message.message), dismissButton: .default(Text("好")))
-        }
-        .confirmationDialog("删除资源？", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }), titleVisibility: .visible) {
-            Button("删除资源及其环境绑定", role: .destructive) { confirmDelete() }
-            Button("取消", role: .cancel) { pendingDeletion = nil }
-        } message: {
-            Text("资源配置、项目环境绑定及该资源已加密保存的密码将被删除。此操作无法撤销。")
-        }
-        .onAppear(perform: chooseInitialTarget)
-        .onChange(of: model.selectedResourceID) { _ in probeMessage = nil }
     }
 
     @ViewBuilder private var detail: some View {
