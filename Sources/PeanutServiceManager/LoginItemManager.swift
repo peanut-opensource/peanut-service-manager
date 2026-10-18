@@ -103,9 +103,10 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             ManagerPageHeader(title: "系统设置", subtitle: "应用行为、本机安全与配置文件", icon: "slider.horizontal.3")
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     settingsCard("应用启动", subtitle: "登录与系统兼容性", icon: "power", color: ManagerStyle.accent) {
                         Toggle("登录 macOS 后自动打开花生服务管理器", isOn: $loginEnabled)
+                            .toggleStyle(.switch)
                             .onChange(of: loginEnabled) { enabled in
                                 do { try LoginItemManager().setEnabled(enabled) }
                                 catch {
@@ -114,9 +115,11 @@ struct SettingsView: View {
                                 }
                             }
                         Divider()
-                        Label("支持 macOS 12 及更新版本", systemImage: "checkmark.circle.fill")
-                        Label("兼容 Intel 与 Apple 芯片", systemImage: "cpu")
-                            .font(.callout).foregroundColor(.secondary)
+                        HStack(spacing: 18) {
+                            Label("macOS 12 及更新版本", systemImage: "checkmark.circle")
+                            Label("Intel 与 Apple 芯片", systemImage: "cpu")
+                        }
+                        .font(.caption).foregroundColor(.secondary)
                     }
 
                     settingsCard("快捷键", subtitle: "在任何应用中快速显示管理器", icon: "command", color: Color(red: 0.34, green: 0.48, blue: 0.77)) {
@@ -134,7 +137,7 @@ struct SettingsView: View {
                             Circle().fill(globalShortcutStatus == "已启用" ? ManagerStyle.success : ManagerStyle.warning).frame(width: 8, height: 8)
                             Text("状态：\(globalShortcutStatus)").font(.callout).foregroundColor(.secondary)
                         }
-                        Text("快捷键由本机全局热键注册。若被其他应用占用，可在此切换组合键。")
+                        Text("若快捷键被其他应用占用，可切换组合键。")
                             .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -143,7 +146,7 @@ struct SettingsView: View {
                             .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                         ManagerTextField(title: "本机加密 key", placeholder: "例如 123456", text: $credentialKey)
                         Button("保存并重新加密已登记密码", action: saveCredentialKey)
-                            .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                            .buttonStyle(ManagerButtonStyle(.primary))
                             .disabled(credentialKey.isEmpty)
                     }
 
@@ -151,8 +154,12 @@ struct SettingsView: View {
                         Text("导出的 JSON 包含项目、环境、服务、资源和密码密文。导入前会校验格式与关联，成功后替换当前配置。")
                             .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                         HStack {
-                            Button("导出配置…", action: exportConfiguration).buttonStyle(.bordered)
-                            Button("导入并替换…", action: chooseImportFile).buttonStyle(.bordered)
+                            Button(action: exportConfiguration) {
+                                Label("导出配置…", systemImage: "square.and.arrow.up")
+                            }.buttonStyle(ManagerButtonStyle(.secondary))
+                            Button(action: chooseImportFile) {
+                                Label("导入并替换…", systemImage: "square.and.arrow.down")
+                            }.buttonStyle(ManagerButtonStyle(.secondary))
                         }
                         if let feedback {
                             Label(feedback, systemImage: "checkmark.circle.fill")
@@ -174,36 +181,37 @@ struct SettingsView: View {
                     }
 
                 }
-                .frame(maxWidth: 1100, alignment: .leading)
+                .frame(maxWidth: 1000, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(24)
             }
         }
         .background(ManagerStyle.canvas)
-        .frame(minWidth: 1100)
         .onAppear(perform: loadCredentialKey)
     }
 
     private func settingsCard<Content: View>(_ title: String, subtitle: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .top, spacing: 26) {
+        HStack(alignment: .top, spacing: 24) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundColor(color)
                     .frame(width: 34, height: 34).background(color.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(.body, design: .rounded).weight(.bold))
+                    Text(title).font(.system(size: 14, weight: .semibold))
                     Text(subtitle).font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            }.frame(width: 230, alignment: .leading)
+            }.frame(width: 210, alignment: .leading)
             VStack(alignment: .leading, spacing: 14) {
                 content()
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
+        .padding(20)
         .background(ManagerStyle.card)
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Color.black.opacity(0.025), radius: 10, x: 0, y: 3)
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {

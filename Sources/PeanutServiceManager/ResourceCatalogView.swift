@@ -18,6 +18,7 @@ struct ResourceCatalogView: View {
     @State private var isCheckingDocker = false
     @State private var probeMessage: String?
     @State private var probeSucceeded = false
+    @FocusState private var isSearchFocused: Bool
 
     private var selectedResource: ResourceRecord? {
         model.workspace.resources.first { $0.id == model.selectedResourceID }
@@ -43,7 +44,6 @@ struct ResourceCatalogView: View {
             }
         }
         .background(ManagerStyle.canvas)
-        .frame(minWidth: 1100)
         .sheet(isPresented: $isCreatingResource) {
             ResourceEditor(resource: nil) { save($0) }
         }
@@ -71,19 +71,26 @@ struct ResourceCatalogView: View {
                     .foregroundColor(ManagerStyle.accent)
             }
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("搜索名称、类型、版本、地址、用途或项目环境", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundColor(.secondary)
-                        .help("清除搜索")
+                HStack(spacing: 9) {
+                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                    TextField("搜索名称、类型、版本、地址、用途或项目环境", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .focused($isSearchFocused)
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundColor(.secondary)
+                            .help("清除搜索").accessibilityLabel("清除搜索")
+                    }
                 }
-                Spacer(minLength: 16)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(ManagerStyle.field)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                    .buttonStyle(ManagerButtonStyle(.primary))
             }
-            .padding(16)
+            .padding(.horizontal, 24).padding(.vertical, 14)
             if listedResources.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: searchText.isEmpty ? "externaldrive" : "magnifyingglass")
@@ -94,11 +101,15 @@ struct ResourceCatalogView: View {
                         .foregroundColor(.secondary)
                     if searchText.isEmpty {
                         Button("登记资源") { isCreatingResource = true }
+                            .buttonStyle(ManagerButtonStyle(.primary))
                     } else {
                         Button("清除搜索") { searchText = "" }
+                            .buttonStyle(ManagerButtonStyle(.secondary))
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                GeometryReader { geometry in
+                ScrollView(.horizontal) {
                 Table(listedResources) {
                     TableColumn("名称") { resource in
                         HStack(spacing: 7) {
@@ -117,13 +128,19 @@ struct ResourceCatalogView: View {
                     TableColumn("绑定项目 / 环境") { resource in listCell(bindingSummary(resource)) }
                         .width(min: 150, ideal: 220)
                     TableColumn("操作") { resource in
-                        HStack(spacing: 12) {
+                        HStack(spacing: 6) {
                             Button("编辑") { editingResource = resource }
+                                .buttonStyle(ManagerButtonStyle(.secondary))
                             Button("管理") { openManagement(resource) }
-                        }.buttonStyle(.borderless)
-                    }.width(100)
+                                .buttonStyle(ManagerButtonStyle(.accent))
+                        }.controlSize(.small)
+                    }.width(144)
                 }
-                .padding(.horizontal, 16).padding(.bottom, 16)
+                .frame(width: max(geometry.size.width, 950), height: geometry.size.height)
+                .managerTableSurface()
+                }
+                }
+                .padding(.horizontal, 24).padding(.bottom, 24)
             }
         }
     }
@@ -181,7 +198,7 @@ struct ResourceCatalogView: View {
                     }
                     Spacer()
                     Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
-                        .buttonStyle(.borderedProminent).tint(ManagerStyle.accent).controlSize(.small)
+                        .buttonStyle(ManagerButtonStyle(.primary)).controlSize(.small)
                 }
                 .padding()
                 List {
@@ -213,7 +230,7 @@ struct ResourceCatalogView: View {
                     }
                 }
             }
-            .frame(minWidth: 220, idealWidth: 270, maxWidth: 360)
+            .frame(minWidth: 240, idealWidth: 270, maxWidth: 320)
             .background(ManagerStyle.canvas)
             detail
                 .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
@@ -237,12 +254,15 @@ struct ResourceCatalogView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(resource.name).font(.system(size: 22, weight: .bold, design: .rounded))
+                                .lineLimit(2).help(resource.name)
                             Text(resource.type.displayName).font(.callout).foregroundColor(.secondary)
                         }
                     }
                     Spacer()
                     Button("编辑") { editingResource = resource }
+                        .buttonStyle(ManagerButtonStyle(.secondary))
                     Button("删除", role: .destructive) { delete(resource) }
+                        .buttonStyle(ManagerButtonStyle(.danger))
                 }
                 ManagerFormCard("资源信息", subtitle: "版本、来源、路径与连接方式", icon: resourceIcon(resource.type)) {
                     VStack(alignment: .leading, spacing: 7) {
@@ -263,11 +283,12 @@ struct ResourceCatalogView: View {
                             } label: {
                                 Label(isCheckingDocker ? "正在检查…" : "检查容器状态", systemImage: "arrow.clockwise")
                             }
+                            .buttonStyle(ManagerButtonStyle(.secondary))
                             .disabled(isCheckingDocker)
                             if let probeMessage {
                                 Label(probeMessage, systemImage: probeSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                                     .font(.callout)
-                                    .foregroundColor(probeSucceeded ? .green : .orange)
+                                    .foregroundColor(probeSucceeded ? ManagerStyle.success : ManagerStyle.warning)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -285,12 +306,14 @@ struct ResourceCatalogView: View {
                                 }
                             }
                             Button("绑定") { bind(resource) }
+                                .buttonStyle(ManagerButtonStyle(.primary))
                                 .disabled(bindingProjectID == nil || bindingEnvironmentID == nil || targetBindings.contains { $0.resourceID == resource.id })
                         }
                         if targetBindings.contains(where: { $0.resourceID == resource.id }) {
                             Label("已绑定到所选环境", systemImage: "checkmark.circle.fill").foregroundColor(.secondary)
                                 .font(.callout)
                             Button("解除此环境绑定", role: .destructive) { unbind(resource) }
+                                .buttonStyle(ManagerButtonStyle(.danger))
                         } else {
                             Text("选择一个项目和环境后绑定。一个资源可以绑定到多个环境。")
                                 .font(.caption).foregroundColor(.secondary)
@@ -309,7 +332,7 @@ struct ResourceCatalogView: View {
                 Text("选择一项资源查看详情，或登记新资源并关联项目环境。")
                     .font(.callout).foregroundColor(.secondary).multilineTextAlignment(.center)
                 Button("登记资源") { isCreatingResource = true }
-                    .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                    .buttonStyle(ManagerButtonStyle(.primary))
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -565,11 +588,10 @@ private struct ResourceEditor: View {
             Spacer()
             Button("取消") { presentationMode.wrappedValue.dismiss() }
                 .keyboardShortcut(.cancelAction)
-                .buttonStyle(.bordered)
+                .buttonStyle(ManagerButtonStyle(.secondary))
             Button("保存") { save() }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .tint(ManagerStyle.accent)
+                .buttonStyle(ManagerButtonStyle(.primary))
                 .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 18)

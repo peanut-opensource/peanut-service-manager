@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct Workspace: Codable, Equatable {
     var projects: [Project] = []
@@ -55,13 +56,59 @@ struct Service: Codable, Identifiable, Equatable {
     var environment: [String: String] = [:]
     var runtimeResourceID: UUID?
     var startsWithManager: Bool = false
+    var host: String? = nil
     var domain: String? = nil
     var port: Int? = nil
 
+    var hasValidBindingHost: Bool {
+        guard let host = AccessAddress.nonempty(host) else { return true }
+        return AccessAddress.isIPAddress(host)
+    }
+
+    var hasValidAccessDomain: Bool {
+        guard let domain = AccessAddress.nonempty(domain) else { return true }
+        return AccessAddress.url(address: domain) != nil
+    }
+
     var accessURL: URL? {
-        var address = domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !address.isEmpty || port != nil else { return nil }
-        if address.isEmpty { address = "127.0.0.1" }
+        if let domain = AccessAddress.nonempty(domain) {
+            return AccessAddress.url(address: domain, port: domain.contains("://") ? nil : port)
+        }
+        guard let address = bindingAccessAddress else { return nil }
+        return AccessAddress.url(address: address, port: port)
+    }
+
+    var accessAddress: String? {
+        accessURL?.absoluteString ?? AccessAddress.nonempty(domain) ?? bindingAccessAddress
+    }
+
+    private var bindingAccessAddress: String? {
+        guard let host = AccessAddress.nonempty(host) else { return port == nil ? nil : "127.0.0.1" }
+        switch host {
+        case "0.0.0.0": return "127.0.0.1"
+        case "::", "[::]": return "::1"
+        default: return host
+        }
+    }
+}
+
+enum AccessAddress {
+    static func nonempty(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
+    }
+
+    static func isIPAddress(_ address: String) -> Bool {
+        guard !address.utf8.contains(0) else { return false }
+        let bracketed = address.hasPrefix("[") && address.hasSuffix("]")
+        let address = bracketed ? String(address.dropFirst().dropLast()) : address
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return address.withCString { (!bracketed && inet_pton(AF_INET, $0, &ipv4) == 1) || inet_pton(AF_INET6, $0, &ipv6) == 1 }
+    }
+
+    static func url(address: String, port: Int? = nil) -> URL? {
+        var address = address
         if !address.contains("://") {
             if address.filter({ $0 == ":" }).count > 1 && !address.hasPrefix("[") && !address.contains("/") {
                 address = "[\(address)]"
@@ -80,12 +127,6 @@ struct Service: Codable, Identifiable, Equatable {
         }
         if let port = components.port, !(1...65535).contains(port) { return nil }
         return components.url
-    }
-
-    var accessAddress: String? {
-        if let accessURL { return accessURL.absoluteString }
-        let address = domain?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return address.isEmpty ? nil : address
     }
 }
 

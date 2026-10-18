@@ -7,6 +7,7 @@ struct WorkspaceView: View {
     @State private var selectedGroupFilter: ServiceGroupFilter = .all
     @State private var editor: WorkspaceEditorPresentation?
     @State private var activeTab = 0
+    @State private var hoveredNavigationID: Int?
     @State private var perspective: WorkspacePerspective = .project
     @State private var pendingEnvironmentRemoval: EnvironmentRemovalTarget?
 
@@ -23,37 +24,93 @@ struct WorkspaceView: View {
     }
 
     var body: some View {
-        TabView(selection: $activeTab) {
-            servicesView(.table)
-                .tabItem { Label("服务列表", systemImage: "list.bullet.rectangle") }
-                .tag(0)
-            servicesView(.cards)
-                .tabItem { Label("服务卡片", systemImage: "square.grid.2x2") }
-                .tag(1)
-            configurationView
-                .tabItem { Label("服务管理", systemImage: "square.stack.3d.up.fill") }
-                .tag(2)
-            ResourceCatalogView(model: model, presentation: .list, onManage: { _ in activeTab = 4 })
-                .tabItem { Label("资源列表", systemImage: "list.bullet.rectangle.portrait") }
-                .tag(3)
-            ResourceCatalogView(model: model, presentation: .management)
-                .tabItem { Label("资源管理", systemImage: "externaldrive.fill") }
-                .tag(4)
-            MCPServiceView(model: model)
-                .tabItem { Label("MCP 服务", systemImage: "network") }
-                .tag(5)
-            SettingsView(model: model)
-                .tabItem { Label("系统设置", systemImage: "slider.horizontal.3") }
-                .tag(6)
+        HStack(spacing: 0) {
+            navigationSidebar
+            Rectangle().fill(ManagerStyle.cardBorder).frame(width: 1)
+            activePage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accentColor(ManagerStyle.accent)
-        .frame(minWidth: 1100, minHeight: 640)
+        .background(ManagerStyle.canvas)
+        .frame(minWidth: 1180, minHeight: 680)
         .sheet(item: $editor) { presentation in editorSheet(presentation) }
         .alert(item: errorBinding) { message in
             Alert(title: Text("无法执行操作"), message: Text(message.message), dismissButton: .default(Text("好")))
         }
         .onAppear {
             model.startServicesMarkedForManagerLaunch()
+        }
+    }
+
+    @ViewBuilder private var activePage: some View {
+        switch activeTab {
+        case 0: servicesView(.table)
+        case 1: servicesView(.cards)
+        case 2: configurationView
+        case 3: ResourceCatalogView(model: model, presentation: .list, onManage: { _ in activeTab = 4 })
+        case 4: ResourceCatalogView(model: model, presentation: .management)
+        case 5: MCPServiceView(model: model)
+        default: SettingsView(model: model)
+        }
+    }
+
+    private var navigationSidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                    .resizable().frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("花生服务管理器").font(.system(size: 14, weight: .bold))
+                    Text("SERVICE MANAGER").font(.system(size: 8, weight: .medium)).tracking(1.1).foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 15).padding(.vertical, 24)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    navigationGroup("服务", items: [(0, "服务列表", "list.bullet.rectangle"), (1, "服务卡片", "square.grid.2x2"), (2, "服务管理", "square.stack.3d.up")])
+                    navigationGroup("资源", items: [(3, "资源列表", "list.bullet.rectangle.portrait"), (4, "资源管理", "externaldrive")])
+                    navigationGroup("连接与偏好", items: [(5, "MCP 服务", "network"), (6, "系统设置", "slider.horizontal.3")])
+                }
+                .padding(.horizontal, 12).padding(.top, 8)
+            }
+            Spacer(minLength: 12)
+            Divider().padding(.horizontal, 16)
+            HStack {
+                Label("本机工作空间", systemImage: "desktopcomputer")
+                Spacer(minLength: 0)
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                    .monospacedDigit()
+            }
+            .font(.system(size: 10)).foregroundColor(.secondary)
+            .padding(.horizontal, 16).padding(.vertical, 18)
+        }
+        .frame(width: 190)
+        .frame(maxHeight: .infinity)
+        .background(ManagerStyle.panel)
+    }
+
+    private func navigationGroup(_ title: String, items: [(Int, String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
+                .padding(.horizontal, 12).padding(.bottom, 5)
+            ForEach(items, id: \.0) { item in
+                Button { activeTab = item.0 } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: item.2).font(.system(size: 15, weight: .medium)).frame(width: 20)
+                        Text(item.1).font(.system(size: 13, weight: activeTab == item.0 ? .semibold : .medium))
+                        Spacer(minLength: 0)
+                        if activeTab == item.0 { Circle().fill(ManagerStyle.accent).frame(width: 5, height: 5) }
+                    }
+                    .foregroundColor(activeTab == item.0 ? ManagerStyle.accent : ManagerStyle.ink.opacity(0.8))
+                    .padding(.horizontal, 12).padding(.vertical, 11)
+                    .background(activeTab == item.0 ? ManagerStyle.selection : hoveredNavigationID == item.0 ? ManagerStyle.cardBorder : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in hoveredNavigationID = hovering ? item.0 : nil }
+                .accessibilityValue(activeTab == item.0 ? "已选择" : "")
+            }
         }
     }
 
@@ -123,7 +180,7 @@ struct WorkspaceView: View {
     }
 
     private var workspaceHeader: some View {
-        ManagerPageHeader(title: "服务管理", subtitle: "管理项目、环境及其服务配置", icon: "square.stack.3d.up.fill") {
+        ManagerPageHeader(title: "服务管理", subtitle: "按项目或环境组织服务", icon: "square.stack.3d.up.fill") {
             MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
             MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
         }
@@ -134,7 +191,7 @@ struct WorkspaceView: View {
             }
             .pickerStyle(.segmented)
             .controlSize(.large)
-            .frame(width: 310)
+            .frame(width: 280)
             .padding(6)
             .background(ManagerStyle.selection)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -186,7 +243,7 @@ struct WorkspaceView: View {
                 Button {
                     if let environmentID = model.selectedEnvironmentID { editor = .associateProjects(environmentID) }
                 } label: { Image(systemName: "link").font(.system(size: 11, weight: .bold)) }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini)
                     .disabled(model.selectedEnvironmentID == nil)
                     .help("为当前环境关联项目")
                     .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
@@ -262,7 +319,7 @@ struct WorkspaceView: View {
                         }
                         .buttonStyle(.plain)
                         Button { editor = .project(item, isNew: false) } label: { Image(systemName: "pencil") }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini)
                             .help("编辑项目")
                     }
                     .padding(.vertical, 5)
@@ -292,13 +349,13 @@ struct WorkspaceView: View {
                 Button { if let project { editor = .associateEnvironments(project.id) } } label: {
                     Image(systemName: "link").font(.system(size: 11, weight: .bold))
                 }
-                .buttonStyle(.borderless).disabled(project == nil).help("关联已有环境")
+                .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini).disabled(project == nil).help("关联已有环境")
                 .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
                 Button {
                     guard let project else { return }
                     editor = .environment(project.id, ProjectEnvironment(name: "开发"), isNew: true)
                 } label: { Image(systemName: "plus").font(.system(size: 11, weight: .bold)) }
-                    .buttonStyle(.borderless).disabled(project == nil).help("新建环境")
+                    .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini).disabled(project == nil).help("新建环境")
                     .frame(width: 25, height: 25).background(ManagerStyle.selection).clipShape(Circle())
             }
             .padding(.horizontal, 14).padding(.vertical, 11)
@@ -321,7 +378,7 @@ struct WorkspaceView: View {
                             }
                             .buttonStyle(.plain)
                             Button { editor = .environment(project.id, item, isNew: false) } label: { Image(systemName: "pencil") }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini)
                                 .help("编辑环境")
                         }
                         .padding(.vertical, 5)
@@ -382,7 +439,7 @@ struct WorkspaceView: View {
             } label: {
                 Label("管理分组", systemImage: "slider.horizontal.3")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ManagerButtonStyle(.secondary))
             .controlSize(.small)
             .padding(.trailing, 14)
         }
@@ -464,14 +521,14 @@ struct WorkspaceView: View {
             } label: {
                 Label("批量操作", systemImage: "checklist")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(ManagerButtonStyle(.secondary))
             .controlSize(.small)
             Spacer(minLength: 2)
             Button {
                 guard let project else { return }
                 editor = .service(project.id, environment.id, Service(name: "新服务", workingDirectory: NSHomeDirectory(), command: ""), isNew: true)
             } label: { Label("添加服务", systemImage: "plus") }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ManagerButtonStyle(.primary))
                 .tint(ManagerStyle.accent)
                 .controlSize(.small)
         }
@@ -505,7 +562,7 @@ struct WorkspaceView: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
             Button { editor = .service(projectID, environmentID, item, isNew: false) } label: { Image(systemName: "pencil") }
-                .buttonStyle(.borderless)
+                .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini)
                 .help("编辑服务配置")
         }
         .padding(.vertical, 8)
@@ -620,30 +677,30 @@ struct WorkspaceView: View {
                     Button {
                         editor = .service(project.id, environment.id, service, isNew: false)
                     } label: { Label("编辑", systemImage: "pencil") }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ManagerButtonStyle(.secondary))
                     .controlSize(.small)
                     Button {
                         ServiceOutputWindowPresenter.show(model: model, service: service)
                     } label: { Label("独立输出", systemImage: "macwindow") }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ManagerButtonStyle(.secondary))
                         .controlSize(.small)
                     Spacer(minLength: 4)
                     Button {
                         model.stopService(serviceID: service.id)
                     } label: { Label("停用", systemImage: "stop.fill") }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ManagerButtonStyle(.danger))
                         .controlSize(.small)
                         .disabled(!isActive(service))
                     Button {
                         model.restartService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
                     } label: { Label("重启", systemImage: "arrow.clockwise") }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(ManagerButtonStyle(.secondary))
                         .controlSize(.small)
                         .disabled(!isActive(service))
                     Button {
                         model.startService(projectID: project.id, environmentID: environment.id, serviceID: service.id)
                     } label: { Label("启用", systemImage: "play.fill") }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ManagerButtonStyle(.primary))
                         .tint(ManagerStyle.accent)
                         .controlSize(.small)
                         .disabled(service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isActive(service))
@@ -895,7 +952,7 @@ struct WorkspaceView: View {
             Text("\(count)").font(.caption2.weight(.semibold)).foregroundColor(.secondary)
             Spacer()
             Button(action: action) { Image(systemName: "plus").font(.system(size: 11, weight: .bold)) }
-                .buttonStyle(.borderless)
+                .buttonStyle(ManagerButtonStyle(.quiet)).controlSize(.mini)
                 .disabled(!enabled)
                 .help("添加\(title)")
                 .frame(width: 25, height: 25)
@@ -1154,7 +1211,7 @@ private struct GroupsEditor: View {
                                 draft.groups.append(ServiceGroup(name: name))
                                 newGroupName = ""
                             } label: { Label("添加", systemImage: "plus") }
-                                .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+                                .buttonStyle(ManagerButtonStyle(.primary)).tint(ManagerStyle.accent)
                                 .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
@@ -1180,10 +1237,10 @@ private struct GroupsEditor: View {
                                             Spacer(minLength: 8)
                                             Button(editingGroupID == group.id ? "完成编辑" : "编辑") {
                                                 editingGroupID = editingGroupID == group.id ? nil : group.id
-                                            }.buttonStyle(.bordered)
+                                            }.buttonStyle(ManagerButtonStyle(.secondary))
                                             Button(role: .destructive) { draft.groups.removeAll { $0.id == group.id } } label: {
                                                 Image(systemName: "trash")
-                                            }.buttonStyle(.bordered).help("删除分组")
+                                            }.buttonStyle(ManagerButtonStyle(.danger)).help("删除分组")
                                         }
                                         if editingGroupID == group.id {
                                             if uniqueServices(draft.services).isEmpty {
@@ -1414,6 +1471,7 @@ private struct ServiceEditor: View {
     @State private var draft: Service
     @State private var argumentsText: String
     @State private var environmentText: String
+    @State private var hostText: String
     @State private var domainText: String
     @State private var portText: String
     @State private var selectedGroupIDs: Set<UUID>
@@ -1426,7 +1484,8 @@ private struct ServiceEditor: View {
         _draft = State(initialValue: service)
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
-        _domainText = State(initialValue: service.domain ?? "127.0.0.1")
+        _hostText = State(initialValue: service.host ?? "127.0.0.1")
+        _domainText = State(initialValue: service.domain ?? "")
         _portText = State(initialValue: service.port.map(String.init) ?? "")
         _selectedGroupIDs = State(initialValue: Set(groups.filter { $0.serviceIDs.contains(service.id) }.map(\.id)))
         self.groups = groups
@@ -1470,15 +1529,23 @@ private struct ServiceEditor: View {
 
                     ManagerFormCard("访问入口", subtitle: "保存后可点击地址，在默认浏览器中打开服务；不修改服务监听配置。", icon: "globe") {
                         HStack(alignment: .top, spacing: 10) {
-                            ManagerTextField(title: "主机地址", placeholder: "127.0.0.1 或 https://api.example.com", text: $domainText)
+                            ManagerTextField(title: "绑定 IP 地址", placeholder: "127.0.0.1 或 ::1", text: $hostText)
                             ManagerTextField(title: "端口（可选）", placeholder: "8080", text: $portText)
                                 .frame(width: 120)
                                 .onChange(of: portText) { value in portText = String(value.filter(\.isNumber).prefix(5)) }
                         }
-                        Text("支持 IP、域名或 HTTP/HTTPS 地址；仅填端口时使用 127.0.0.1，未填端口时使用地址中指定的端口或协议默认端口。")
+                        ManagerTextField(title: "访问域名（可选）", placeholder: "api.example.com 或 https://api.example.com", text: $domainText)
+                        Text("访问域名优先；完整 HTTP/HTTPS 地址保留其端口和路径。绑定 0.0.0.0 或 :: 时，访问入口使用本机回环地址。")
                             .font(.caption).foregroundColor(.secondary)
                         if !validPort { Text("端口范围为 1–65535。").font(.caption).foregroundColor(.red) }
-                        if !validHost { Text("请填写有效的 IP、域名或 HTTP/HTTPS 地址。").font(.caption).foregroundColor(.red) }
+                        if !accessDraft.hasValidBindingHost { Text("绑定地址需为有效的 IPv4 或 IPv6 地址。").font(.caption).foregroundColor(.red) }
+                        if !accessDraft.hasValidAccessDomain { Text("请填写有效的访问域名或 HTTP/HTTPS 地址。").font(.caption).foregroundColor(.red) }
+                        if validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomain {
+                            HStack(spacing: 8) {
+                                Text("访问链接").font(.caption).foregroundColor(.secondary)
+                                ServiceAccessLink(service: accessDraft)
+                            }.padding(.top, 4)
+                        }
                     }
 
                     ManagerFormCard("启动参数（可选）", subtitle: "每行填写一个参数项；选项和值分别占一行，管理器会按顺序组合后传给启动命令。", icon: "text.alignleft") {
@@ -1534,7 +1601,7 @@ private struct ServiceEditor: View {
 
                     ManagerFormCard("所属分组", subtitle: "分组仅作用于当前环境，可选择多个。", icon: "tag") {
                         if groups.isEmpty {
-                            Text("当前环境还没有分组。请先在工作区点击“管理分组”创建分组。")
+                            Text("当前环境还没有分组。请先在服务管理中点击“管理分组”创建分组。")
                                 .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                         } else {
                             VStack(alignment: .leading, spacing: 0) {
@@ -1562,11 +1629,11 @@ private struct ServiceEditor: View {
             .frame(maxHeight: .infinity)
             .background(ManagerStyle.canvas)
 
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort && validHost) {
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomain) {
                 draft.arguments = argumentsText.split(separator: "\n").map(String.init)
-                let domain = domainText.trimmingCharacters(in: .whitespacesAndNewlines)
-                draft.domain = domain.isEmpty ? nil : domain
-                draft.port = Int(portText).flatMap { (1...65535).contains($0) ? $0 : nil }
+                draft.host = accessDraft.host
+                draft.domain = accessDraft.domain
+                draft.port = accessDraft.port
                 var values: [String: String] = [:]
                 for line in environmentText.split(separator: "\n") {
                     guard let separator = line.firstIndex(of: "=") else { continue }
@@ -1593,13 +1660,12 @@ private struct ServiceEditor: View {
         return (1...65535).contains(port)
     }
 
-    private var validHost: Bool {
-        let address = domainText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.isEmpty else { return true }
+    private var accessDraft: Service {
         var service = draft
-        service.domain = address
-        service.port = nil
-        return service.accessURL != nil
+        service.host = AccessAddress.nonempty(hostText)
+        service.domain = AccessAddress.nonempty(domainText)
+        service.port = Int(portText).flatMap { (1...65535).contains($0) ? $0 : nil }
+        return service
     }
 }
 
@@ -1609,35 +1675,32 @@ private struct LabeledTextEditor: View {
     let placeholder: String
     @Binding var text: String
     let height: CGFloat
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(.callout, design: .rounded).weight(.semibold))
+            Text(title).font(.system(size: 12, weight: .semibold))
             Text(hint).font(.caption).foregroundColor(.secondary)
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color(NSColor.textBackgroundColor))
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color.primary.opacity(0.16), lineWidth: 1)
                 TextEditor(text: $text)
-                    .font(.system(.body, design: .monospaced))
-                    .padding(5)
-                    .background(Color.clear)
+                    .font(.system(size: 13, design: .monospaced))
+                    .focused($focused)
+                    .padding(7)
                 if text.isEmpty {
                     Text(placeholder)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(.secondary.opacity(0.75))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 15)
                         .allowsHitTesting(false)
                 }
             }
             .frame(height: height)
+            .background(Color(NSColor.textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous)
+                .stroke(focused ? ManagerStyle.accent : ManagerStyle.fieldBorder, lineWidth: focused ? 1.5 : 1))
         }
-        .padding(10)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(ManagerStyle.fieldBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
@@ -1647,10 +1710,10 @@ private func editorButtons(cancel: @escaping () -> Void, canSave: Bool = true, a
         Spacer()
         Button("取消", action: cancel)
             .keyboardShortcut(.cancelAction)
-            .buttonStyle(.bordered)
+            .buttonStyle(ManagerButtonStyle(.secondary))
         Button("保存", action: action)
             .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(ManagerButtonStyle(.primary))
             .tint(ManagerStyle.accent)
             .disabled(!canSave)
     }

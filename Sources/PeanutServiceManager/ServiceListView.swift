@@ -30,6 +30,7 @@ struct ServiceListView: View {
 
     @State private var searchText = ""
     @State private var selectedGroupID: UUID?
+    @FocusState private var isSearchFocused: Bool
 
     private var entries: [ServiceListEntry] {
         model.workspace.projects.flatMap { project in
@@ -62,7 +63,7 @@ struct ServiceListView: View {
             let service = entry.service
             let searchable = [
                 service.name, service.description, service.command, service.workingDirectory,
-                service.domain ?? "", service.port.map(String.init) ?? "", entry.path,
+                service.host ?? "", service.domain ?? "", service.port.map(String.init) ?? "", entry.path,
                 service.arguments.joined(separator: " "), service.environment.keys.sorted().joined(separator: " ")
             ].joined(separator: " ")
             return searchable.localizedCaseInsensitiveContains(searchText)
@@ -79,13 +80,18 @@ struct ServiceListView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 9) {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                    TextField("搜索服务、域名、项目或启动命令", text: $searchText)
+                    TextField("搜索服务、地址、项目或启动命令", text: $searchText)
                         .textFieldStyle(.plain)
+                        .focused($isSearchFocused)
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundColor(.secondary).help("清除搜索")
+                    }
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 38)
-                .background(ManagerStyle.card)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.10), lineWidth: 1))
+                .background(ManagerStyle.field)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 Picker("服务分组", selection: $selectedGroupID) {
@@ -94,7 +100,7 @@ struct ServiceListView: View {
                         Text(option.label).tag(Optional(option.id))
                     }
                 }
-                .frame(maxWidth: 260)
+                .frame(width: 190)
                 .help("分组是环境内的服务集合，可用于筛选和批量操作")
 
                 Menu("批量操作") {
@@ -102,7 +108,7 @@ struct ServiceListView: View {
                     Button("停止当前结果") { model.stopServices(filteredEntries.map(\.service.id)) }
                     Button("重启当前结果") { restartFilteredServices() }
                 }
-                .fixedSize()
+                .frame(width: 106)
                 .disabled(filteredEntries.isEmpty)
             }
             .padding(.horizontal, 24)
@@ -114,7 +120,8 @@ struct ServiceListView: View {
                 GeometryReader { geometry in
                     ScrollView(.horizontal) {
                         serviceTable
-                            .frame(width: max(geometry.size.width, 1280), height: geometry.size.height)
+                            .frame(width: max(geometry.size.width, 1020), height: geometry.size.height)
+                            .managerTableSurface()
                     }
                 }
                 .padding(.horizontal, 24)
@@ -152,38 +159,44 @@ struct ServiceListView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .width(min: 180, ideal: 220)
+            .width(min: 145, ideal: 180)
             TableColumn("项目") { entry in
                 Text(entry.project.name).lineLimit(1).help(entry.project.name)
             }
-            .width(min: 100, ideal: 120)
+            .width(min: 90, ideal: 105)
             TableColumn("环境") { entry in
                 Text(entry.environment.name).lineLimit(1).help(entry.environment.name)
             }
-            .width(min: 140, ideal: 155)
+            .width(min: 85, ideal: 95)
             TableColumn("分组") { entry in
                 let names = entry.groups.map(\.name).joined(separator: "、")
                 Text(names.isEmpty ? "未分组" : names)
                     .foregroundColor(.secondary).lineLimit(2).help(names.isEmpty ? "未分组" : names)
             }
-            .width(min: 100, ideal: 120)
-            TableColumn("运行状态 / PID") { entry in
+            .width(min: 85, ideal: 100)
+            TableColumn("运行状态") { entry in
                 ServiceTableStatus(entry: entry, model: model)
             }
-            .width(min: 120, ideal: 130)
+            .width(110)
+            TableColumn("PID") { entry in
+                Text(model.processSnapshots[entry.id]?.pid.map(String.init) ?? "—")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            .width(68)
             TableColumn("访问入口") { entry in
                 ServiceAccessLink(service: entry.service)
                     .font(.system(.caption, design: .monospaced))
             }
-            .width(min: 180, ideal: 220)
+            .width(min: 145, ideal: 170)
             TableColumn("操作") { entry in
                 ServiceEntryActions(
-                    entry: entry, model: model,
+                    entry: entry, model: model, compact: true,
                     onEdit: { onEdit(entry.project.id, entry.environment.id, entry.service) },
                     onSelect: { onSelect(entry.project.id, entry.environment.id, entry.service.id) }
                 )
             }
-            .width(270)
+            .width(150)
         }
     }
 
@@ -273,12 +286,15 @@ private struct ServiceOverviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 11) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(state.1)
-                    .frame(width: 5)
+                Image(systemName: "server.rack")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(ManagerStyle.accent)
+                    .frame(width: 38, height: 38)
+                    .background(ManagerStyle.selection)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 5) {
                     Button(action: onSelect) {
-                        Text(model.serviceDisplayName(service)).font(.system(.title3, design: .rounded).weight(.bold)).lineLimit(2)
+                        Text(model.serviceDisplayName(service)).font(.system(.headline, design: .rounded).weight(.semibold)).lineLimit(2)
                             .help(model.serviceDisplayName(service))
                     }
                     .buttonStyle(.plain)
@@ -306,19 +322,25 @@ private struct ServiceOverviewCard: View {
                         .font(.system(.callout, design: .monospaced).weight(.medium))
                 }
                 Spacer()
-                if let pid = snapshot?.pid { Text("PID \(pid)").font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary) }
-                if let code = snapshot?.exitCode { Text("退出码 \(code)").font(.system(.caption2, design: .monospaced)).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger) }
             }
             .padding(11)
             .background(ManagerStyle.accent.opacity(0.055))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            if snapshot?.pid != nil || snapshot?.exitCode != nil {
+                HStack(spacing: 12) {
+                    if let pid = snapshot?.pid { Text("PID " + String(pid)) }
+                    if let code = snapshot?.exitCode { Text("退出码 " + String(code)).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger) }
+                }
+                .font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
+            }
 
             detailLine(title: "启动命令", value: service.command.isEmpty ? "未设置" : service.command, icon: "chevron.left.forwardslash.chevron.right", monospaced: true)
             if !visibleArguments.isEmpty {
                 detailLine(title: "启动参数", value: visibleArguments.joined(separator: "  "), icon: "text.alignleft", monospaced: true)
             }
             detailLine(title: "工作目录", value: service.workingDirectory, icon: "folder", monospaced: true)
-            HStack(spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 if service.startsWithManager { metadataChip("随管理器启动", icon: "power") }
                 if !service.environment.isEmpty { metadataChip("\(service.environment.count) 个环境变量", icon: "slider.horizontal.3") }
                 if let runtimeID = service.runtimeResourceID,
@@ -333,18 +355,19 @@ private struct ServiceOverviewCard: View {
                 if entry.groups.isEmpty {
                     Text("未分组").font(.caption).foregroundColor(.secondary)
                 } else {
-                    ForEach(entry.groups) { group in metadataChip(group.name, icon: "tag.fill") }
+                    Text(entry.groups.map(\.name).joined(separator: "、"))
+                        .font(.caption).foregroundColor(.secondary).lineLimit(2)
+                        .help(entry.groups.map(\.name).joined(separator: "、"))
                 }
                 Spacer(minLength: 2)
             }
 
             ServiceEntryActions(entry: entry, model: model, onEdit: onEdit, onSelect: onSelect)
         }
-        .padding(16)
+        .padding(18)
         .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .shadow(color: .black.opacity(0.045), radius: 12, x: 0, y: 4)
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func detailLine(title: String, value: String, icon: String, monospaced: Bool = false) -> some View {
@@ -378,10 +401,10 @@ private struct ServiceTableStatus: View {
         let status = ServiceEntryState(entry: entry, model: model)
         VStack(alignment: .leading, spacing: 3) {
             Label(status.state.0, systemImage: status.state.2)
+                .font(.system(.caption, design: .rounded).weight(.semibold))
                 .foregroundColor(status.state.1)
-            if let pid = status.snapshot?.pid {
-                Text("PID \(pid)").font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary)
-            }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(status.state.1.opacity(0.10)).clipShape(Capsule())
             if let code = status.snapshot?.exitCode {
                 Text("退出码 \(code)").font(.caption2).foregroundColor(code == 0 ? .secondary : ManagerStyle.danger)
             }
@@ -393,6 +416,7 @@ private struct ServiceTableStatus: View {
 private struct ServiceEntryActions: View {
     let entry: ServiceListEntry
     @ObservedObject var model: AppModel
+    var compact = false
     let onEdit: () -> Void
     let onSelect: () -> Void
 
@@ -401,14 +425,19 @@ private struct ServiceEntryActions: View {
         HStack(spacing: 6) {
             Button {
                 model.startService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
-            } label: { Label("启动", systemImage: "play.fill") }
-                .buttonStyle(.borderedProminent).tint(ManagerStyle.accent)
+            } label: { actionLabel("启动", icon: "play.fill") }
+                .buttonStyle(ManagerButtonStyle(.accent, iconOnly: compact))
+                .help("启动服务").accessibilityLabel("启动服务")
                 .disabled(status.isActive || entry.service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button { model.stopService(serviceID: entry.service.id) } label: { Label("停止", systemImage: "stop.fill") }
+            Button { model.stopService(serviceID: entry.service.id) } label: { actionLabel("停止", icon: "stop.fill") }
+                .buttonStyle(ManagerButtonStyle(.danger, iconOnly: compact))
+                .help("停止服务").accessibilityLabel("停止服务")
                 .disabled(!status.isActive)
             Button {
                 model.restartService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
-            } label: { Label("重启", systemImage: "arrow.clockwise") }
+            } label: { actionLabel("重启", icon: "arrow.clockwise") }
+                .buttonStyle(ManagerButtonStyle(.secondary, iconOnly: compact))
+                .help("重启服务").accessibilityLabel("重启服务")
                 .disabled(!status.isActive)
             Menu {
                 Button("编辑服务", action: onEdit)
@@ -419,12 +448,25 @@ private struct ServiceEntryActions: View {
                     model.selectedServiceID = entry.service.id
                     ServiceOutputWindowPresenter.show(model: model, service: entry.service)
                 }
-            } label: { Image(systemName: "ellipsis.circle") }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ManagerStyle.ink)
+                    .frame(width: 28, height: 28)
+                    .managerIconSurface()
+            }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 28, height: 28)
                 .fixedSize()
-                .help("编辑、详情与实时输出")
+                .help("编辑、详情与实时输出").accessibilityLabel("服务更多操作")
         }
         .controlSize(.small)
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder private func actionLabel(_ title: String, icon: String) -> some View {
+        if compact { Image(systemName: icon).frame(width: 12, height: 14) }
+        else { Label(title, systemImage: icon) }
     }
 }
