@@ -57,7 +57,7 @@ struct Service: Codable, Identifiable, Equatable {
     var runtimeResourceID: UUID?
     var startsWithManager: Bool = false
     var host: String? = nil
-    var domain: String? = nil
+    var domains: [String]? = nil
     var port: Int? = nil
 
     var hasValidBindingHost: Bool {
@@ -65,21 +65,24 @@ struct Service: Codable, Identifiable, Equatable {
         return AccessAddress.isIPAddress(host)
     }
 
-    var hasValidAccessDomain: Bool {
-        guard let domain = AccessAddress.nonempty(domain) else { return true }
-        return AccessAddress.url(address: domain) != nil
-    }
-
-    var accessURL: URL? {
-        if let domain = AccessAddress.nonempty(domain) {
-            return AccessAddress.url(address: domain, port: domain.contains("://") ? nil : port)
+    var hasValidAccessDomains: Bool {
+        (domains ?? []).allSatisfy { domain in
+            guard let domain = AccessAddress.nonempty(domain) else { return false }
+            return AccessAddress.url(address: domain) != nil
         }
-        guard let address = bindingAccessAddress else { return nil }
-        return AccessAddress.url(address: address, port: port)
     }
 
-    var accessAddress: String? {
-        accessURL?.absoluteString ?? AccessAddress.nonempty(domain) ?? bindingAccessAddress
+    var accessURLs: [URL] {
+        let domains = AccessAddress.normalizedDomains(domains ?? [])
+        if !domains.isEmpty {
+            var seen = Set<URL>()
+            return domains.compactMap { domain in
+                AccessAddress.url(address: domain, port: domain.contains("://") ? nil : port)
+            }.filter { seen.insert($0).inserted }
+        }
+        guard let address = bindingAccessAddress,
+              let url = AccessAddress.url(address: address, port: port) else { return [] }
+        return [url]
     }
 
     private var bindingAccessAddress: String? {
@@ -96,6 +99,11 @@ enum AccessAddress {
     static func nonempty(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
+    }
+
+    static func normalizedDomains(_ domains: [String]) -> [String] {
+        var seen = Set<String>()
+        return domains.compactMap(nonempty).filter { seen.insert($0).inserted }
     }
 
     static func isIPAddress(_ address: String) -> Bool {

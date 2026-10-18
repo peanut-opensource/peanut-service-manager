@@ -69,7 +69,7 @@ final class LocalMCPServer {
             tool("environment_delete", "Delete an unassociated shared environment. Detach its project associations first.", ["environmentID": "string"], ["environmentID"]),
             tool("group_save", "Create/update a group. serviceIDs, if supplied, replaces its membership with services in this exact environment.", scope.merging(["groupID": "string", "name": "string", "serviceIDs": "array"]) { _, n in n }, ["projectID", "environmentID", "name"]),
             tool("group_delete", "Delete a group, preserving its services.", scope.merging(["groupID": "string"]) { _, n in n }, ["projectID", "environmentID", "groupID"]),
-            tool("service_save", "Create/update a service by stable ID. Existing fields omitted on update are preserved. Use empty runtimeResourceID/host/domain or port 0 to clear optional fields. Host is the binding IPv4/IPv6 address; domain is the access address. These metadata fields do not change the launch command. Environment object replaces all environment variables.", scope.merging(["serviceID": "string", "name": "string", "description": "string", "workingDirectory": "string", "command": "string", "arguments": "array", "environment": "object", "runtimeResourceID": "string", "startsWithManager": "boolean", "host": "string", "domain": "string", "port": "integer"]) { _, n in n }, ["projectID", "environmentID", "name"]),
+            tool("service_save", "Create/update a service by stable ID. Existing fields omitted on update are preserved. Use empty runtimeResourceID/host, domains [] or port 0 to clear optional fields. Host is the binding IPv4/IPv6 address; domains is the ordered list of tenant access domains or complete HTTP(S) URLs. The list replaces all domains; omitted domains preserves the list. These metadata fields do not change the launch command. Environment object replaces all environment variables.", scope.merging(["serviceID": "string", "name": "string", "description": "string", "workingDirectory": "string", "command": "string", "arguments": "array", "environment": "object", "runtimeResourceID": "string", "startsWithManager": "boolean", "host": "string", "domains": "array", "port": "integer"]) { _, n in n }, ["projectID", "environmentID", "name"]),
             tool("service_delete", "Delete an inactive service and remove it from all groups.", serviceScope, ["projectID", "environmentID", "serviceID"]),
             tool("service_start", "Start this exact service through the shared supervisor. Returns the actual supervisor acknowledgement.", serviceScope, ["projectID", "environmentID", "serviceID"]),
             tool("service_stop", "Request graceful stop only. Never force-kills a service.", serviceScope, ["projectID", "environmentID", "serviceID"]),
@@ -448,10 +448,10 @@ final class LocalMCPServer {
             if let value = args["environment"] as? [String: String] { service.environment = value }
             if let value = args["startsWithManager"] as? Bool { service.startsWithManager = value }
             if let value = args["host"] as? String { service.host = AccessAddress.nonempty(value) }
-            if let value = args["domain"] as? String { service.domain = AccessAddress.nonempty(value) }
+            if let value = args["domains"] as? [String] { service.domains = AccessAddress.normalizedDomains(value) }
             if let value = args["port"] as? Int { service.port = value == 0 ? nil : value }
             guard service.hasValidBindingHost else { throw ToolError("Service host must be a valid IPv4 or IPv6 binding address") }
-            guard service.hasValidAccessDomain else { throw ToolError("Service domain must be a valid HTTP(S) access address without credentials") }
+            guard service.hasValidAccessDomains else { throw ToolError("Every service domain must be a valid HTTP(S) access address without credentials") }
             if let value = args["runtimeResourceID"] as? String {
                 service.runtimeResourceID = value.isEmpty ? nil : UUID(uuidString: value)
                 if let id = service.runtimeResourceID {

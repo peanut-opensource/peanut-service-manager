@@ -627,7 +627,7 @@ struct WorkspaceView: View {
                     }
                 }
                 detailCard("访问入口", icon: "globe") {
-                    ServiceAccessLink(service: service)
+                    ServiceAccessLinks(service: service)
                         .font(.system(.body, design: .monospaced).weight(.medium))
                 }
                 detailCard("启动配置", icon: "terminal") {
@@ -1473,7 +1473,7 @@ private struct ServiceEditor: View {
     @State private var argumentsText: String
     @State private var environmentText: String
     @State private var hostText: String
-    @State private var domainText: String
+    @State private var domainsText: String
     @State private var portText: String
     @State private var selectedGroupIDs: Set<UUID>
     let isNew: Bool
@@ -1486,7 +1486,7 @@ private struct ServiceEditor: View {
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
         _hostText = State(initialValue: service.host ?? "127.0.0.1")
-        _domainText = State(initialValue: service.domain ?? "")
+        _domainsText = State(initialValue: (service.domains ?? []).joined(separator: "\n"))
         _portText = State(initialValue: service.port.map(String.init) ?? "")
         _selectedGroupIDs = State(initialValue: Set(groups.filter { $0.serviceIDs.contains(service.id) }.map(\.id)))
         self.groups = groups
@@ -1535,16 +1535,16 @@ private struct ServiceEditor: View {
                                 .frame(width: 120)
                                 .onChange(of: portText) { value in portText = String(value.filter(\.isNumber).prefix(5)) }
                         }
-                        ManagerTextField(title: "访问域名（可选）", placeholder: "api.example.com 或 https://api.example.com", text: $domainText)
+                        LabeledTextEditor(title: "访问域名（可选，可填多个）", hint: "每行一个租户域名或完整 HTTP/HTTPS 地址；保存时忽略空行并去除重复项。", placeholder: "tenant-a.example.com\ntenant-b.example.com\nhttps://tenant-c.example.com", text: $domainsText, height: 100)
                         Text("访问域名优先；完整 HTTP/HTTPS 地址保留其端口和路径。绑定 0.0.0.0 或 :: 时，访问入口使用本机回环地址。")
                             .font(.caption).foregroundColor(.secondary)
                         if !validPort { Text("端口范围为 1–65535。").font(.caption).foregroundColor(.red) }
                         if !accessDraft.hasValidBindingHost { Text("绑定地址需为有效的 IPv4 或 IPv6 地址。").font(.caption).foregroundColor(.red) }
-                        if !accessDraft.hasValidAccessDomain { Text("请填写有效的访问域名或 HTTP/HTTPS 地址。").font(.caption).foregroundColor(.red) }
-                        if validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomain {
-                            HStack(spacing: 8) {
+                        if !accessDraft.hasValidAccessDomains { Text("请检查每一行，均需为有效的访问域名或 HTTP/HTTPS 地址。").font(.caption).foregroundColor(.red) }
+                        if validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomains {
+                            VStack(alignment: .leading, spacing: 8) {
                                 Text("访问链接").font(.caption).foregroundColor(.secondary)
-                                ServiceAccessLink(service: accessDraft)
+                                ServiceAccessLinks(service: accessDraft)
                             }.padding(.top, 4)
                         }
                     }
@@ -1630,10 +1630,10 @@ private struct ServiceEditor: View {
             .frame(maxHeight: .infinity)
             .background(ManagerStyle.canvas)
 
-            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomain) {
+            editorButtons(cancel: { presentationMode.wrappedValue.dismiss() }, canSave: !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && validPort && accessDraft.hasValidBindingHost && accessDraft.hasValidAccessDomains) {
                 draft.arguments = argumentsText.split(separator: "\n").map(String.init)
                 draft.host = accessDraft.host
-                draft.domain = accessDraft.domain
+                draft.domains = accessDraft.domains
                 draft.port = accessDraft.port
                 var values: [String: String] = [:]
                 for line in environmentText.split(separator: "\n") {
@@ -1664,7 +1664,7 @@ private struct ServiceEditor: View {
     private var accessDraft: Service {
         var service = draft
         service.host = AccessAddress.nonempty(hostText)
-        service.domain = AccessAddress.nonempty(domainText)
+        service.domains = AccessAddress.normalizedDomains(domainsText.components(separatedBy: .newlines))
         service.port = Int(portText).flatMap { (1...65535).contains($0) ? $0 : nil }
         return service
     }

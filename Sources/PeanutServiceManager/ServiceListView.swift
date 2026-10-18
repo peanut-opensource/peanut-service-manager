@@ -63,7 +63,7 @@ struct ServiceListView: View {
             let service = entry.service
             let searchable = [
                 service.name, service.description, service.command, service.workingDirectory,
-                service.host ?? "", service.domain ?? "", service.port.map(String.init) ?? "", entry.path,
+                service.host ?? "", (service.domains ?? []).joined(separator: " "), service.port.map(String.init) ?? "", entry.path,
                 service.arguments.joined(separator: " "), service.environment.keys.sorted().joined(separator: " ")
             ].joined(separator: " ")
             return searchable.localizedCaseInsensitiveContains(searchText)
@@ -191,7 +191,7 @@ struct ServiceListView: View {
             }
             .width(68)
             TableColumn("访问入口") { entry in
-                ServiceAccessLink(service: entry.service)
+                ServiceAccessLinks(service: entry.service, compact: true)
                     .font(.system(.caption, design: .monospaced))
             }
             .width(min: 145, ideal: 170)
@@ -324,7 +324,7 @@ private struct ServiceOverviewCard: View {
                 Image(systemName: "globe.americas.fill").foregroundColor(ManagerStyle.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("访问入口").font(.caption2).foregroundColor(.secondary)
-                    ServiceAccessLink(service: service)
+                    ServiceAccessLinks(service: service)
                         .font(.system(.callout, design: .monospaced).weight(.medium))
                 }
                 Spacer()

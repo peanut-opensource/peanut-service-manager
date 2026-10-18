@@ -334,25 +334,53 @@ private struct ManagerIconSurface: ViewModifier {
     }
 }
 
-struct ServiceAccessLink: View {
+struct ServiceAccessLinks: View {
     let service: Service
+    var compact = false
 
     var body: some View {
-        if let url = service.accessURL {
-            Link(destination: url) {
-                HStack(spacing: 5) {
-                    Text(url.absoluteString).lineLimit(1).truncationMode(.middle)
-                    Image(systemName: "arrow.up.right.square").font(.caption2)
+        let urls = service.accessURLs
+        if let first = urls.first {
+            if compact {
+                HStack(spacing: 6) {
+                    accessLink(first)
+                    if urls.count > 1 {
+                        Menu {
+                            ForEach(Array(urls.dropFirst()), id: \.self) { url in
+                                Button(url.absoluteString) { NSWorkspace.shared.open(url) }
+                            }
+                        } label: {
+                            Text("+\(urls.count - 1)")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("选择其他租户访问域名")
+                        .accessibilityLabel("其他 \(urls.count - 1) 个访问入口")
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(urls, id: \.self) { url in accessLink(url) }
                 }
             }
-            .buttonStyle(.plain)
-            .foregroundColor(ManagerStyle.accent)
-            .help("在默认浏览器中打开 \(url.absoluteString)")
         } else {
-            Text(service.accessAddress ?? "未登记主机地址和端口")
+            Text("未登记访问入口")
                 .foregroundColor(.secondary)
                 .lineLimit(1)
         }
+    }
+
+    private func accessLink(_ url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 5) {
+                Text(url.absoluteString).lineLimit(1).truncationMode(.middle)
+                Image(systemName: "arrow.up.right.square").font(.caption2)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(ManagerStyle.accent)
+        .help("在默认浏览器中打开 \(url.absoluteString)")
     }
 }
 

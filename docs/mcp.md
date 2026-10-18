@@ -26,7 +26,7 @@ args = ["--mcp-server"]
 
 `target_search`、`workspace_list`、`project_save`、`project_delete`、`environment_save`、`environment_attach`、`environment_detach`、`environment_delete`、`group_save`、`group_delete`、`service_save`、`service_delete`、`service_start`、`service_stop`、`service_restart`、`service_status`、`service_logs`、`resource_list`、`resource_save`、`resource_delete`、`resource_status`、`resource_password_get`、`resource_password_set`、`binding_save`、`binding_delete`、`settings_get`、`settings_set`。
 
-`service_save` 支持服务绑定 IP（`host`）、端口（`port`）和访问域名（`domain`）；绑定地址校验 IPv4 / IPv6，域名支持普通域名和完整 HTTP/HTTPS URL。省略地址字段保留原值，空地址清除对应值。
+`service_save` 支持服务绑定 IP（`host`）、端口（`port`）和多个访问域名（`domains` 字符串数组）；绑定地址校验 IPv4 / IPv6，数组每项支持普通域名和完整 HTTP/HTTPS URL。`domains` 替换整份列表，空数组清除，省略时保留；空行和完全重复的条目会被移除，每项均校验。`host` 省略时保留、空字符串清除。
 
 MCP 暂不提供配置文件导入、导出；请在应用设置页使用对应功能。
 
