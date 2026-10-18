@@ -114,15 +114,15 @@ struct SettingsView: View {
                                     model.errorMessage = error.localizedDescription
                                 }
                             }
-                        Divider()
+                        Divider().opacity(0.4)
                         HStack(spacing: 18) {
                             Label("macOS 12 及更新版本", systemImage: "checkmark.circle")
                             Label("Intel 与 Apple 芯片", systemImage: "cpu")
                         }
-                        .font(.caption).foregroundColor(.secondary)
+                        .font(.caption).foregroundColor(ManagerStyle.muted)
                     }
 
-                    settingsCard("快捷键", subtitle: "在任何应用中快速显示管理器", icon: "command", color: Color(red: 0.34, green: 0.48, blue: 0.77)) {
+                    settingsCard("快捷键", subtitle: "在任何应用中快速显示管理器", icon: "command", color: ManagerStyle.cyan) {
                         Picker("显示主窗口", selection: $globalShortcut) {
                             Text("Option + Y").tag("optionY")
                             Text("Control + Option + Y").tag("controlOptionY")
@@ -134,26 +134,26 @@ struct SettingsView: View {
                             )
                         }
                         HStack(spacing: 8) {
-                            Circle().fill(globalShortcutStatus == "已启用" ? ManagerStyle.success : ManagerStyle.warning).frame(width: 8, height: 8)
-                            Text("状态：\(globalShortcutStatus)").font(.callout).foregroundColor(.secondary)
+                            ManagerStatusDot(color: globalShortcutStatus == "已启用" ? ManagerStyle.success : ManagerStyle.warning, size: 7.5)
+                            Text("状态：\(globalShortcutStatus)").font(.callout).foregroundColor(ManagerStyle.muted)
                         }
                         Text("若快捷键被其他应用占用，可切换组合键。")
-                            .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.caption).foregroundColor(ManagerStyle.muted).fixedSize(horizontal: false, vertical: true)
                     }
 
-                    settingsCard("密码保护", subtitle: "只加密资源密码", icon: "lock.shield", color: Color(red: 0.23, green: 0.61, blue: 0.50)) {
+                    settingsCard("密码保护", subtitle: "只加密资源密码", icon: "lock.shield", color: ManagerStyle.success) {
                         Text("资源密码在本机单独加密保存；本机使用时可解密。加密 key 以明文保存在本机配置中。")
-                            .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.callout).foregroundColor(ManagerStyle.muted).fixedSize(horizontal: false, vertical: true)
                         ManagerTextField(title: "本机加密 key", placeholder: "例如 123456", text: $credentialKey)
                         Button("保存并重新加密已登记密码", action: saveCredentialKey)
                             .buttonStyle(ManagerButtonStyle(.primary))
                             .disabled(credentialKey.isEmpty)
                     }
 
-                    settingsCard("配置文件", subtitle: "导出备份或替换本机配置", icon: "doc.on.doc", color: Color(red: 0.69, green: 0.48, blue: 0.22)) {
+                    settingsCard("配置文件", subtitle: "导出备份或替换本机配置", icon: "doc.on.doc", color: ManagerStyle.warning) {
                         Text("导出的 JSON 包含项目、环境、服务、资源和密码密文。导入前会校验格式与关联，成功后替换当前配置。")
-                            .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                        HStack {
+                            .font(.callout).foregroundColor(ManagerStyle.muted).fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 10) {
                             Button(action: exportConfiguration) {
                                 Label("导出配置…", systemImage: "square.and.arrow.up")
                             }.buttonStyle(ManagerButtonStyle(.secondary))
@@ -163,20 +163,20 @@ struct SettingsView: View {
                         }
                         if let feedback {
                             Label(feedback, systemImage: "checkmark.circle.fill")
-                                .font(.caption).foregroundColor(Color(red: 0.23, green: 0.61, blue: 0.50))
+                                .font(.caption).foregroundColor(ManagerStyle.success)
                         }
                     }
 
-                    settingsCard("软件信息", subtitle: "版本、项目仓库与开发团队", icon: "info.circle", color: ManagerStyle.accent) {
+                    settingsCard("软件信息", subtitle: "版本、项目仓库与开发团队", icon: "info.circle", color: ManagerStyle.purple) {
                         infoRow("版本", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")
-                        Divider()
+                        Divider().opacity(0.4)
                         HStack(alignment: .top) {
-                            Text("仓库").foregroundColor(.secondary)
+                            Text("仓库").foregroundColor(ManagerStyle.muted)
                             Spacer(minLength: 12)
                             Link("github.com/peanut-opensource/peanut-service-manager", destination: URL(string: "https://github.com/peanut-opensource/peanut-service-manager")!)
                                 .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                         }.font(.callout)
-                        Divider()
+                        Divider().opacity(0.4)
                         infoRow("开发团队", "花生科技研发中心")
                     }
 
@@ -193,12 +193,10 @@ struct SettingsView: View {
     private func settingsCard<Content: View>(_ title: String, subtitle: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
         HStack(alignment: .top, spacing: 24) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundColor(color)
-                    .frame(width: 34, height: 34).background(color.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                ManagerIconBadge(icon: icon, color: color, size: 34, iconSize: 15, cornerRadius: 8)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 14, weight: .semibold))
-                    Text(subtitle).font(.caption).foregroundColor(.secondary)
+                    Text(title).font(.system(size: 14, weight: .semibold)).foregroundColor(ManagerStyle.ink)
+                    Text(subtitle).font(.caption).foregroundColor(ManagerStyle.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(width: 210, alignment: .leading)
@@ -207,16 +205,13 @@ struct SettingsView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.025), radius: 10, x: 0, y: 3)
+        .padding(18)
+        .managerTableSurface()
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
         HStack(alignment: .top) {
-            Text(title).foregroundColor(.secondary)
+            Text(title).foregroundColor(ManagerStyle.muted)
             Spacer()
             Text(value).foregroundColor(ManagerStyle.ink).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

@@ -56,60 +56,120 @@ struct WorkspaceView: View {
 
     private var navigationSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 11) {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                    .resizable().frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("花生服务管理器").font(.system(size: 14, weight: .bold))
-                    Text("SERVICE MANAGER").font(.system(size: 8, weight: .medium)).tracking(1.1).foregroundColor(.secondary)
+                    .resizable()
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.10), radius: 3, x: 0, y: 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("花生服务管理器")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(ManagerStyle.ink)
+                    Text("SERVICE MANAGER")
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .tracking(1.0)
+                        .foregroundColor(ManagerStyle.muted)
                 }
             }
-            .padding(.horizontal, 15).padding(.vertical, 24)
+            .padding(.horizontal, 16)
+            .padding(.top, 22)
+            .padding(.bottom, 20)
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    navigationGroup("服务", items: [(0, "服务列表", "list.bullet.rectangle"), (1, "服务卡片", "square.grid.2x2"), (2, "服务管理", "square.stack.3d.up")])
-                    navigationGroup("资源", items: [(3, "资源列表", "list.bullet.rectangle.portrait"), (4, "资源管理", "externaldrive")])
-                    navigationGroup("连接与偏好", items: [(5, "MCP 服务", "network"), (6, "系统设置", "slider.horizontal.3")])
+                VStack(alignment: .leading, spacing: 22) {
+                    navigationGroup(
+                        "服务",
+                        color: ManagerStyle.accent,
+                        items: [
+                            (0, "服务列表", "list.bullet.rectangle"),
+                            (1, "服务卡片", "square.grid.2x2"),
+                            (2, "服务管理", "square.stack.3d.up")
+                        ]
+                    )
+                    navigationGroup(
+                        "资源",
+                        color: ManagerStyle.cyan,
+                        items: [
+                            (3, "资源列表", "list.bullet.rectangle.portrait"),
+                            (4, "资源管理", "externaldrive")
+                        ]
+                    )
+                    navigationGroup(
+                        "连接与偏好",
+                        color: ManagerStyle.purple,
+                        items: [
+                            (5, "MCP 服务", "network"),
+                            (6, "系统设置", "slider.horizontal.3")
+                        ]
+                    )
                 }
-                .padding(.horizontal, 12).padding(.top, 8)
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
             }
+
             Spacer(minLength: 12)
-            Divider().padding(.horizontal, 16)
-            HStack {
-                Label("本机工作空间", systemImage: "desktopcomputer")
+            Divider().opacity(0.4).padding(.horizontal, 14)
+            HStack(spacing: 7) {
+                ManagerStatusDot(color: ManagerStyle.success, size: 6.5)
+                Text("本机工作空间")
                 Spacer(minLength: 0)
                 Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
-                    .monospacedDigit()
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(ManagerStyle.muted)
             }
-            .font(.system(size: 10)).foregroundColor(.secondary)
-            .padding(.horizontal, 16).padding(.vertical, 18)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(ManagerStyle.muted)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
-        .frame(width: 190)
+        .frame(width: 196)
         .frame(maxHeight: .infinity)
         .background(ManagerStyle.panel)
     }
 
-    private func navigationGroup(_ title: String, items: [(Int, String, String)]) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
-                .padding(.horizontal, 12).padding(.bottom, 5)
+    private func navigationGroup(_ title: String, color: Color, items: [(Int, String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.6)
+                .foregroundColor(ManagerStyle.muted)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
             ForEach(items, id: \.0) { item in
+                let isSelected = activeTab == item.0
                 Button { activeTab = item.0 } label: {
-                    HStack(spacing: 11) {
-                        Image(systemName: item.2).font(.system(size: 15, weight: .medium)).frame(width: 20)
-                        Text(item.1).font(.system(size: 13, weight: activeTab == item.0 ? .semibold : .medium))
+                    HStack(spacing: 10) {
+                        Image(systemName: item.2)
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 20)
+                            .foregroundColor(isSelected ? color : ManagerStyle.muted)
+                        Text(item.1)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundColor(isSelected ? ManagerStyle.ink : ManagerStyle.ink.opacity(0.78))
                         Spacer(minLength: 0)
-                        if activeTab == item.0 { Circle().fill(ManagerStyle.accent).frame(width: 5, height: 5) }
+                        if isSelected {
+                            Circle()
+                                .fill(color)
+                                .frame(width: 5.5, height: 5.5)
+                                .shadow(color: color.opacity(0.45), radius: 2, x: 0, y: 0)
+                        }
                     }
-                    .foregroundColor(activeTab == item.0 ? ManagerStyle.accent : ManagerStyle.ink.opacity(0.8))
-                    .padding(.horizontal, 12).padding(.vertical, 11)
-                    .background(activeTab == item.0 ? ManagerStyle.selection : hoveredNavigationID == item.0 ? ManagerStyle.cardBorder : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isSelected ? color.opacity(0.12) : (hoveredNavigationID == item.0 ? ManagerStyle.ink.opacity(0.04) : Color.clear))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(isSelected ? color.opacity(0.25) : Color.clear, lineWidth: 0.8)
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .onHover { hovering in hoveredNavigationID = hovering ? item.0 : nil }
-                .accessibilityValue(activeTab == item.0 ? "已选择" : "")
+                .accessibilityValue(isSelected ? "已选择" : "")
             }
         }
     }
@@ -181,8 +241,8 @@ struct WorkspaceView: View {
 
     private var workspaceHeader: some View {
         ManagerPageHeader(title: "服务管理", subtitle: "按环境或项目组织服务", icon: "square.stack.3d.up.fill") {
-            MetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill")
-            MetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill")
+            ManagerMetricPill(title: "项目", value: model.workspace.projects.count, icon: "folder.fill", color: ManagerStyle.accent)
+            ManagerMetricPill(title: "服务", value: allServices.count, icon: "gearshape.2.fill", color: ManagerStyle.cyan)
         }
         .overlay(alignment: .center) {
             Picker("管理视角", selection: $perspective) {
@@ -191,11 +251,8 @@ struct WorkspaceView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .controlSize(.large)
-            .frame(width: 220)
-            .padding(6)
-            .background(ManagerStyle.selection)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .controlSize(.regular)
+            .frame(width: 180)
             .help("从项目或环境出发管理双向关联")
         }
     }
@@ -760,35 +817,40 @@ struct WorkspaceView: View {
                         .font(.caption).foregroundColor(.secondary)
                     Spacer()
                     Button("清空") { model.clearServiceLogs(service.id) }
-                        .font(.caption).disabled((model.processLogs[service.id] ?? "").isEmpty)
+                        .buttonStyle(ManagerButtonStyle(.quiet))
+                        .controlSize(.mini)
+                        .disabled((model.processLogs[service.id] ?? "").isEmpty)
                 }
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(logText(service))
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor((model.processLogs[service.id] ?? "").isEmpty ? .secondary : .primary)
+                            .foregroundColor((model.processLogs[service.id] ?? "").isEmpty ? ManagerStyle.muted : ManagerStyle.ink)
                             .frame(maxWidth: .infinity, minHeight: 130, alignment: .topLeading)
                             .textSelection(.enabled)
                             .padding(10)
                             .id("log-bottom")
                     }
                     .frame(height: 150)
+                    .background(ManagerStyle.field)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .onAppear { proxy.scrollTo("log-bottom", anchor: .bottom) }
                     .onChange(of: model.processLogs[service.id] ?? "") { _ in proxy.scrollTo("log-bottom", anchor: .bottom) }
                 }
-                .background(ManagerStyle.canvas)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
         }
     }
 
     private func stateBadge(_ service: Service) -> some View {
-        Label(processStateLabel(service), systemImage: processStateIcon(service))
-            .font(.system(.caption, design: .rounded).weight(.semibold))
-            .foregroundColor(processStateColor(service))
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(processStateColor(service).opacity(0.1))
-            .clipShape(Capsule())
+        ManagerStatusBadge(
+            title: processStateLabel(service),
+            icon: processStateIcon(service),
+            color: processStateColor(service)
+        )
     }
 
     private func logText(_ service: Service) -> String {
@@ -1079,13 +1141,14 @@ struct WorkspaceView: View {
     }
 
     private func processStateColor(_ service: Service) -> Color {
-        if model.serviceErrors[service.id] != nil { return Color(red: 0.78, green: 0.31, blue: 0.33) }
-        guard let state = model.processSnapshots[service.id]?.state else { return .secondary }
+        if model.serviceErrors[service.id] != nil { return ManagerStyle.danger }
+        guard let state = model.processSnapshots[service.id]?.state else { return ManagerStyle.muted }
         switch state {
-        case .starting, .running: return Color(red: 0.20, green: 0.59, blue: 0.46)
-        case .stopping: return Color(red: 0.79, green: 0.52, blue: 0.19)
-        case .exited, .unknown: return .secondary
-        case .failed: return Color(red: 0.78, green: 0.31, blue: 0.33)
+        case .starting: return ManagerStyle.warning
+        case .running: return ManagerStyle.success
+        case .stopping: return ManagerStyle.warning
+        case .exited, .unknown: return ManagerStyle.muted
+        case .failed: return ManagerStyle.danger
         }
     }
 
@@ -1724,24 +1787,6 @@ private func editorButtons(cancel: @escaping () -> Void, canSave: Bool = true, a
     .overlay(alignment: .top) { Rectangle().fill(ManagerStyle.cardBorder).frame(height: 1) }
 }
 
-private struct MetricPill: View {
-    let title: String
-    let value: Int
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundColor(ManagerStyle.accent)
-            Text("\(value)").font(.system(.callout, design: .rounded).weight(.bold))
-            Text(title).font(.caption).foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
-        .background(ManagerStyle.card.opacity(0.86))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.primary.opacity(0.06), lineWidth: 1))
-    }
-}
 
 private struct ErrorAlert: Identifiable {
     let id = UUID()

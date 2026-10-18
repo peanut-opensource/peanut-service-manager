@@ -66,27 +66,25 @@ struct ResourceCatalogView: View {
     private var resourceList: some View {
         VStack(spacing: 0) {
             ManagerPageHeader(title: "资源列表", subtitle: "查看资源版本、连接地址及项目环境用途", icon: "list.bullet.rectangle") {
-                Text("\(model.workspace.resources.count) 项")
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundColor(ManagerStyle.accent)
+                ManagerMetricPill(title: "登记资源", value: model.workspace.resources.count, icon: "externaldrive.fill", color: ManagerStyle.cyan)
             }
             HStack(spacing: 10) {
                 HStack(spacing: 9) {
-                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                    Image(systemName: "magnifyingglass").foregroundColor(ManagerStyle.muted)
                     TextField("搜索名称、类型、版本、地址、用途或项目环境", text: $searchText)
                         .textFieldStyle(.plain)
                         .focused($isSearchFocused)
                     if !searchText.isEmpty {
                         Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).foregroundColor(.secondary)
+                            .buttonStyle(.plain).foregroundColor(ManagerStyle.muted)
                             .help("清除搜索").accessibilityLabel("清除搜索")
                     }
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 38)
                 .background(ManagerStyle.field)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius).stroke(isSearchFocused ? ManagerStyle.accent.opacity(0.72) : ManagerStyle.fieldBorder, lineWidth: isSearchFocused ? 1.5 : 1))
+                .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
                 Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
                     .buttonStyle(ManagerButtonStyle(.primary))
             }
@@ -98,7 +96,7 @@ struct ResourceCatalogView: View {
                     Text(searchText.isEmpty ? "尚未登记资源" : "没有匹配的资源")
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                     Text(searchText.isEmpty ? "登记资源后，可在这里查看资源信息及项目环境绑定。" : "尝试其他名称、地址或项目环境。")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(ManagerStyle.muted)
                     if searchText.isEmpty {
                         Button("登记资源") { isCreatingResource = true }
                             .buttonStyle(ManagerButtonStyle(.primary))
@@ -113,7 +111,8 @@ struct ResourceCatalogView: View {
                 Table(listedResources) {
                     TableColumn("名称") { resource in
                         HStack(spacing: 7) {
-                            Image(systemName: resourceIcon(resource.type)).foregroundColor(ManagerStyle.accent)
+                            Image(systemName: resourceIcon(resource.type))
+                                .foregroundColor(resourceColor(resource.type))
                             Text(resource.name).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
                         }.help(resource.name)
                     }.width(min: 130, ideal: 160)
@@ -183,18 +182,14 @@ struct ResourceCatalogView: View {
     private var management: some View {
         VStack(spacing: 0) {
             ManagerPageHeader(title: "资源管理", subtitle: "登记并关联项目环境所需的本地资源", icon: "externaldrive.fill") {
-                Text("\(model.workspace.resources.count) 项")
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundColor(ManagerStyle.accent)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(ManagerStyle.selection).clipShape(Capsule())
+                ManagerMetricPill(title: "资源总数", value: model.workspace.resources.count, icon: "externaldrive.fill", color: ManagerStyle.cyan)
             }
             HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("资源目录").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(.secondary)
-                        Text("\(model.workspace.resources.count) 项资源").font(.caption2).foregroundColor(.secondary)
+                        Text("资源目录").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundColor(ManagerStyle.muted)
+                        Text("\(model.workspace.resources.count) 项资源").font(.caption2).foregroundColor(ManagerStyle.muted)
                     }
                     Spacer()
                     Button { isCreatingResource = true } label: { Label("登记资源", systemImage: "plus") }
@@ -207,19 +202,19 @@ struct ResourceCatalogView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: resourceIcon(resource.type))
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(model.selectedResourceID == resource.id ? ManagerStyle.accent : .secondary)
+                                    .foregroundColor(resourceColor(resource.type))
                                     .frame(width: 30, height: 30)
-                                    .background(model.selectedResourceID == resource.id ? ManagerStyle.card : Color.primary.opacity(0.045))
-                                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    .background(resourceColor(resource.type).opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(resource.name).font(.system(.body, design: .rounded).weight(.semibold)).lineLimit(1)
-                                    Text(resourceSummary(resource)).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                    Text(resourceSummary(resource)).font(.caption).foregroundColor(ManagerStyle.muted).lineLimit(1)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 5).padding(.horizontal, 6)
                             .background(model.selectedResourceID == resource.id ? ManagerStyle.selection : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                         .buttonStyle(PlainButtonStyle())
                         .listRowBackground(Color.clear)
@@ -246,16 +241,11 @@ struct ResourceCatalogView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
                     HStack(spacing: 13) {
-                        Image(systemName: resourceIcon(resource.type))
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(ManagerStyle.accent)
-                            .frame(width: 48, height: 48)
-                            .background(ManagerStyle.selection)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        ManagerIconBadge(icon: resourceIcon(resource.type), color: resourceColor(resource.type), size: 44, iconSize: 20, cornerRadius: 10)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(resource.name).font(.system(size: 22, weight: .bold, design: .rounded))
+                            Text(resource.name).font(.system(size: 21, weight: .bold, design: .rounded))
                                 .lineLimit(2).help(resource.name)
-                            Text(resource.type.displayName).font(.callout).foregroundColor(.secondary)
+                            Text(resource.type.displayName).font(.callout).foregroundColor(ManagerStyle.muted)
                         }
                     }
                     Spacer()
@@ -448,6 +438,17 @@ struct ResourceCatalogView: View {
         case .php, .node: return "terminal.fill"
         case .dockerContainer: return "shippingbox.fill"
         case .other: return "shippingbox"
+        }
+    }
+
+    private func resourceColor(_ type: ResourceType) -> Color {
+        switch type {
+        case .mysql: return ManagerStyle.warning
+        case .redis: return ManagerStyle.danger
+        case .php: return ManagerStyle.purple
+        case .node: return ManagerStyle.success
+        case .dockerContainer: return ManagerStyle.cyan
+        case .other: return ManagerStyle.accent
         }
     }
 }

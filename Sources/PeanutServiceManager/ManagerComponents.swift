@@ -42,14 +42,14 @@ private struct ManagerFieldLabel: View {
     let hint: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(ManagerStyle.ink)
             if let hint, !hint.isEmpty {
                 Text(hint)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(ManagerStyle.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -75,6 +75,102 @@ private struct ManagerFieldSurface: ViewModifier {
     }
 }
 
+struct ManagerIconBadge: View {
+    let icon: String
+    let color: Color
+    var size: CGFloat = 34
+    var iconSize: CGFloat = 16
+    var cornerRadius: CGFloat = 9
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: iconSize, weight: .semibold))
+            .foregroundColor(color)
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(color.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(color.opacity(0.20), lineWidth: 0.8)
+            )
+    }
+}
+
+struct ManagerStatusBadge: View {
+    let title: String
+    let icon: String
+    let color: Color
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(spacing: compact ? 4 : 5) {
+            Image(systemName: icon)
+                .font(.system(size: compact ? 9 : 10, weight: .semibold))
+            Text(title)
+                .font(.system(size: compact ? 11 : 12, weight: .medium, design: .rounded))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, compact ? 7 : 9)
+        .padding(.vertical, compact ? 3 : 4.5)
+        .background(
+            RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous)
+                .fill(color.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ManagerStyle.badgeRadius, style: .continuous)
+                .strokeBorder(color.opacity(0.24), lineWidth: 0.8)
+        )
+    }
+}
+
+struct ManagerStatusDot: View {
+    let color: Color
+    var size: CGFloat = 7
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
+            .shadow(color: color.opacity(0.38), radius: 2, x: 0, y: 0)
+    }
+}
+
+struct ManagerMetricPill: View {
+    let title: String
+    let value: Int
+    let icon: String
+    var color: Color = ManagerStyle.accent
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 22, height: 22)
+                .background(color.opacity(0.12))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(value)")
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundColor(ManagerStyle.ink)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(ManagerStyle.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(ManagerStyle.cardBorder, lineWidth: 0.8)
+        )
+    }
+}
+
 struct ManagerFormCard<Content: View>: View {
     let title: String
     let subtitle: String
@@ -91,14 +187,11 @@ struct ManagerFormCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(tint)
-                    .frame(width: 20, height: 20)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                ManagerIconBadge(icon: icon, color: tint, size: 32, iconSize: 15, cornerRadius: 8)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 14, weight: .semibold)).foregroundColor(ManagerStyle.ink)
                     if !subtitle.isEmpty {
                         Text(subtitle)
@@ -112,7 +205,7 @@ struct ManagerFormCard<Content: View>: View {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
+        .padding(18)
         .managerTableSurface()
     }
 }
@@ -123,14 +216,11 @@ struct ManagerEditorHeader: View {
     let icon: String
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(ManagerStyle.accent)
-                .frame(width: 26)
+        HStack(spacing: 14) {
+            ManagerIconBadge(icon: icon, color: ManagerStyle.accent, size: 36, iconSize: 18, cornerRadius: 9)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 18, weight: .semibold)).foregroundColor(ManagerStyle.ink)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 17, weight: .semibold)).foregroundColor(ManagerStyle.ink)
                 if !subtitle.isEmpty {
                     Text(subtitle).font(.system(size: 12)).foregroundColor(.secondary)
                 }
@@ -138,8 +228,8 @@ struct ManagerEditorHeader: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
         .background(ManagerStyle.card)
         .overlay(alignment: .bottom) { Rectangle().fill(ManagerStyle.cardBorder).frame(height: 1) }
     }
@@ -160,13 +250,10 @@ struct ManagerPageHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 24, weight: .regular))
-                .foregroundColor(ManagerStyle.accent)
-                .frame(width: 30)
+            ManagerIconBadge(icon: icon, color: ManagerStyle.accent, size: 40, iconSize: 20, cornerRadius: 10)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.system(size: 23, weight: .semibold)).foregroundColor(ManagerStyle.ink)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 21, weight: .bold)).foregroundColor(ManagerStyle.ink)
                 if !subtitle.isEmpty {
                     Text(subtitle).font(.system(size: 12)).foregroundColor(.secondary)
                 }
@@ -174,8 +261,8 @@ struct ManagerPageHeader<Trailing: View>: View {
             Spacer(minLength: 20)
             trailing
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 24)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 20)
         .background(ManagerStyle.canvas)
     }
 }
@@ -188,7 +275,7 @@ extension ManagerPageHeader where Trailing == EmptyView {
 
 struct ManagerButtonStyle: ButtonStyle {
     enum Tone {
-        case primary, accent, secondary, quiet, danger
+        case primary, start, accent, secondary, quiet, danger
     }
 
     let tone: Tone
@@ -213,18 +300,24 @@ private struct ManagerButtonBody: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
-    private var cornerRadius: CGFloat { iconOnly ? 8 : ManagerStyle.radius }
+    private var cornerRadius: CGFloat {
+        switch controlSize {
+        case .mini: return 6
+        case .small: return 7
+        default: return ManagerStyle.radius
+        }
+    }
 
     private var height: CGFloat {
         switch controlSize {
         case .mini: return 24
         case .small: return 28
-        default: return 34
+        default: return 32
         }
     }
 
-    private var accent: Color {
-        colorScheme == .dark ? Color(red: 0.56, green: 0.68, blue: 1) : ManagerStyle.accent
+    private var accentColor: Color {
+        colorScheme == .dark ? ManagerStyle.accentLight : ManagerStyle.accent
     }
 
     private var active: Bool { isEnabled && (isHovered || configuration.isPressed) }
@@ -232,7 +325,8 @@ private struct ManagerButtonBody: View {
     private var foreground: Color {
         switch tone {
         case .primary: return .white
-        case .accent: return accent
+        case .start: return .white
+        case .accent: return accentColor
         case .danger: return ManagerStyle.danger
         case .secondary: return ManagerStyle.ink
         case .quiet: return ManagerStyle.muted
@@ -241,30 +335,46 @@ private struct ManagerButtonBody: View {
 
     private var background: Color {
         switch tone {
-        case .primary: return ManagerStyle.accent
-        case .accent: return accent.opacity(colorScheme == .dark ? 0.16 : 0.09)
-        case .secondary: return ManagerStyle.card
-        case .quiet: return .clear
-        case .danger: return ManagerStyle.danger.opacity(colorScheme == .dark ? 0.16 : 0.08)
+        case .primary:
+            return accentColor
+        case .start:
+            return accentColor
+        case .accent:
+            return accentColor.opacity(colorScheme == .dark ? 0.20 : 0.12)
+        case .secondary:
+            return ManagerStyle.card
+        case .quiet:
+            return isHovered && isEnabled ? ManagerStyle.ink.opacity(0.06) : .clear
+        case .danger:
+            return ManagerStyle.danger.opacity(colorScheme == .dark ? 0.18 : 0.10)
         }
     }
 
     private var border: Color {
         switch tone {
-        case .primary: return Color.white.opacity(0.12)
-        case .quiet: return .clear
-        case .accent: return accent.opacity(active ? 0.48 : 0.26)
-        case .secondary: return ManagerStyle.fieldBorder
-        case .danger: return ManagerStyle.danger.opacity(active ? 0.48 : 0.25)
+        case .primary, .start:
+            return Color.white.opacity(0.18)
+        case .quiet:
+            return .clear
+        case .accent:
+            return accentColor.opacity(active ? 0.50 : 0.28)
+        case .secondary:
+            return active ? ManagerStyle.accent.opacity(0.40) : ManagerStyle.fieldBorder
+        case .danger:
+            return ManagerStyle.danger.opacity(active ? 0.55 : 0.30)
         }
     }
 
-    private var interactionColor: Color {
+    private var interactionOverlay: Color {
         switch tone {
-        case .primary: return configuration.isPressed ? .black : .white
-        case .accent: return accent
-        case .danger: return ManagerStyle.danger
-        case .secondary, .quiet: return ManagerStyle.ink
+        case .primary, .start:
+            return configuration.isPressed ? Color.black.opacity(0.15) : (isHovered ? Color.white.opacity(0.12) : .clear)
+        case .accent:
+            return configuration.isPressed ? accentColor.opacity(0.12) : (isHovered ? accentColor.opacity(0.06) : .clear)
+        case .danger:
+            return configuration.isPressed ? ManagerStyle.danger.opacity(0.12) : (isHovered ? ManagerStyle.danger.opacity(0.06) : .clear)
+        case .secondary, .quiet:
+            return configuration.isPressed ? ManagerStyle.ink.opacity(0.08) : (isHovered ? ManagerStyle.ink.opacity(0.04) : .clear)
         }
     }
 
@@ -272,22 +382,30 @@ private struct ManagerButtonBody: View {
         configuration.label
             .font(.system(size: controlSize == .mini ? 11 : 12, weight: .semibold))
             .foregroundColor(foreground)
-            .padding(.horizontal, iconOnly ? 0 : (controlSize == .mini ? 9 : 12))
+            .padding(.horizontal, iconOnly ? 0 : (controlSize == .mini ? 8 : 12))
             .frame(minWidth: height, minHeight: height)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(background)
                     .overlay {
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(interactionColor.opacity(isEnabled ? (configuration.isPressed ? 0.14 : (isHovered ? 0.08 : 0)) : 0))
+                            .fill(isEnabled ? interactionOverlay : .clear)
                     }
             }
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(border, lineWidth: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(border, lineWidth: 1)
+            )
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: tone == .primary && isEnabled ? ManagerStyle.accent.opacity(configuration.isPressed ? 0.05 : 0.18) : .clear, radius: 3, x: 0, y: 1)
-            .opacity(isEnabled ? 1 : 0.42)
+            .shadow(
+                color: (tone == .primary || tone == .start) && isEnabled ? accentColor.opacity(configuration.isPressed ? 0.08 : 0.22) : Color.black.opacity(tone == .secondary && isEnabled ? 0.03 : 0),
+                radius: (tone == .primary || tone == .start) ? 3 : 1,
+                x: 0,
+                y: 1
+            )
+            .opacity(isEnabled ? 1 : 0.40)
             .onHover { isHovered = $0 }
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(.easeOut(duration: 0.10), value: isHovered)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
@@ -300,9 +418,12 @@ extension View {
     func managerTableSurface() -> some View {
         self
             .background(ManagerStyle.card)
-            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: ManagerStyle.radius, style: .continuous).strokeBorder(ManagerStyle.cardBorder, lineWidth: 1))
-            .shadow(color: .black.opacity(0.025), radius: 6, x: 0, y: 2)
+            .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous)
+                    .strokeBorder(ManagerStyle.cardBorder, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.035), radius: 8, x: 0, y: 2)
     }
 }
 
@@ -315,7 +436,15 @@ private struct ManagerIconSurface: ViewModifier {
         switch controlSize {
         case .mini: return 24
         case .small: return 28
-        default: return 34
+        default: return 32
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        switch controlSize {
+        case .mini: return 6
+        case .small: return 7
+        default: return 8
         }
     }
 
@@ -324,13 +453,19 @@ private struct ManagerIconSurface: ViewModifier {
             .font(.system(size: controlSize == .mini ? 11 : 12, weight: .semibold))
             .foregroundColor(ManagerStyle.ink)
             .frame(width: size, height: size)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ManagerStyle.card))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ManagerStyle.ink.opacity(isHovered && isEnabled ? 0.08 : 0)))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .opacity(isEnabled ? 1 : 0.42)
+            .background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(ManagerStyle.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(ManagerStyle.ink.opacity(isHovered && isEnabled ? 0.06 : 0))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(isHovered && isEnabled ? ManagerStyle.accent.opacity(0.35) : ManagerStyle.fieldBorder, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.40)
             .onHover { isHovered = $0 }
-            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(.easeOut(duration: 0.10), value: isHovered)
     }
 }
 
@@ -342,7 +477,7 @@ struct ServiceAccessLinks: View {
         let urls = service.accessURLs
         if let first = urls.first {
             if compact {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     accessLink(first)
                     if urls.count > 1 {
                         Menu {
@@ -351,31 +486,39 @@ struct ServiceAccessLinks: View {
                             }
                         } label: {
                             Text("+\(urls.count - 1)")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(ManagerStyle.accent)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(ManagerStyle.selection)
+                                .clipShape(Capsule())
                         }
                         .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
                         .fixedSize()
                         .help("选择其他租户访问域名")
                         .accessibilityLabel("其他 \(urls.count - 1) 个访问入口")
                     }
                 }
             } else {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(urls, id: \.self) { url in accessLink(url) }
                 }
             }
         } else {
             Text("未登记访问入口")
-                .foregroundColor(.secondary)
+                .font(.system(.caption))
+                .foregroundColor(ManagerStyle.muted)
                 .lineLimit(1)
         }
     }
 
     private func accessLink(_ url: URL) -> some View {
         Link(destination: url) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Text(url.absoluteString).lineLimit(1).truncationMode(.middle)
-                Image(systemName: "arrow.up.right.square").font(.caption2)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 9, weight: .bold))
             }
         }
         .buttonStyle(.plain)
@@ -385,18 +528,31 @@ struct ServiceAccessLinks: View {
 }
 
 enum ManagerStyle {
-    static let accent = Color(red: 0.25, green: 0.38, blue: 0.79)
+    // 现代科技群青蓝与主色体系
+    static let accent = Color(red: 0.08, green: 0.47, blue: 0.98)
+    static let accentLight = Color(red: 0.22, green: 0.56, blue: 1.0)
+    static let selection = accent.opacity(0.12)
+
+    // 语义色彩体系（自成一体的彩色）
+    static let success = Color(red: 0.16, green: 0.70, blue: 0.44) // 运行中 - 翡翠绿
+    static let warning = Color(red: 0.96, green: 0.58, blue: 0.13) // 转换/停止中 - 琥珀橙
+    static let danger = Color(red: 0.93, green: 0.28, blue: 0.28)  // 失败/危险 - 珊瑚红
+    static let purple = Color(red: 0.58, green: 0.35, blue: 0.94)  // MCP/连接 - 紫罗兰
+    static let cyan = Color(red: 0.12, green: 0.65, blue: 0.82)    // 资源/目录 - 湖蓝青
+
+    // 结构层级
     static let canvas = Color(NSColor.windowBackgroundColor)
     static let panel = Color(NSColor.controlBackgroundColor)
-    static let selection = accent.opacity(0.10)
     static let card = Color(NSColor.controlBackgroundColor)
     static let field = Color(NSColor.textBackgroundColor)
-    static let fieldBorder = Color(NSColor.separatorColor).opacity(0.55)
-    static let cardBorder = Color(NSColor.separatorColor).opacity(0.35)
+    static let fieldBorder = Color(NSColor.separatorColor).opacity(0.40)
+    static let cardBorder = Color(NSColor.separatorColor).opacity(0.28)
     static let ink = Color(NSColor.labelColor)
-    static let success = Color(NSColor.systemGreen)
-    static let warning = Color(NSColor.systemOrange)
-    static let danger = Color(NSColor.systemRed)
-    static let muted = Color.secondary
-    static let radius: CGFloat = 12
+    static let muted = Color(NSColor.secondaryLabelColor)
+    static let subtle = Color(NSColor.tertiaryLabelColor)
+
+    // 统一圆角
+    static let radius: CGFloat = 8
+    static let cardRadius: CGFloat = 13
+    static let badgeRadius: CGFloat = 7
 }

@@ -208,23 +208,9 @@ struct ServiceListView: View {
 
     private var header: some View {
         ManagerPageHeader(title: presentation == .table ? "服务列表" : "服务卡片", subtitle: "按服务查看运行状态、访问入口和启动配置", icon: presentation == .table ? "list.bullet.rectangle" : "square.grid.2x2.fill") {
-            overviewMetric(title: "服务", value: entries.count, icon: "server.rack", color: ManagerStyle.accent)
-            overviewMetric(title: "运行中", value: runningCount, icon: "checkmark.circle.fill", color: ManagerStyle.success)
+            ManagerMetricPill(title: "服务", value: entries.count, icon: "server.rack", color: ManagerStyle.accent)
+            ManagerMetricPill(title: "运行中", value: runningCount, icon: "checkmark.circle.fill", color: ManagerStyle.success)
         }
-    }
-
-    private func overviewMetric(title: String, value: Int, icon: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).foregroundColor(color)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(value)").font(.system(.headline, design: .rounded).weight(.bold))
-                Text(title).font(.caption2).foregroundColor(.secondary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
     private var emptyState: some View {
@@ -290,62 +276,76 @@ private struct ServiceOverviewCard: View {
     private var serviceDescription: String { service.description.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top, spacing: 11) {
-                Image(systemName: "server.rack")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(ManagerStyle.accent)
-                    .frame(width: 38, height: 38)
-                    .background(ManagerStyle.selection)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 5) {
+                ManagerIconBadge(icon: "server.rack", color: ManagerStyle.accent, size: 36, iconSize: 16, cornerRadius: 8)
+                VStack(alignment: .leading, spacing: 3) {
                     Button(action: onSelect) {
-                        Text(model.serviceDisplayName(service)).font(.system(.headline, design: .rounded).weight(.semibold)).lineLimit(2)
+                        Text(model.serviceDisplayName(service))
+                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                            .lineLimit(2)
                             .help(model.serviceDisplayName(service))
                     }
                     .buttonStyle(.plain)
-                    Text(entry.path).font(.caption).foregroundColor(.secondary).lineLimit(1).help(entry.path)
+                    Text(entry.path)
+                        .font(.system(size: 11))
+                        .foregroundColor(ManagerStyle.muted)
+                        .lineLimit(1)
+                        .help(entry.path)
                 }
-                Spacer(minLength: 5)
-                Label(state.0, systemImage: state.2)
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundColor(state.1)
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(state.1.opacity(0.10))
-                    .clipShape(Capsule())
+                Spacer(minLength: 4)
+                ManagerStatusBadge(title: state.0, icon: state.2, color: state.1)
             }
-            .frame(height: 48)
+            .frame(minHeight: 44)
 
             if !serviceDescription.isEmpty {
-                Text(serviceDescription).font(.callout).foregroundColor(.secondary).lineLimit(2)
+                Text(serviceDescription)
+                    .font(.system(size: 12))
+                    .foregroundColor(ManagerStyle.muted)
+                    .lineLimit(2)
             }
 
-            HStack(spacing: 10) {
-                Image(systemName: "globe.americas.fill").foregroundColor(ManagerStyle.accent)
+            HStack(spacing: 8) {
+                Image(systemName: "globe")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(ManagerStyle.accent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("访问入口").font(.caption2).foregroundColor(.secondary)
+                    Text("访问入口")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(ManagerStyle.muted)
                     ServiceAccessLinks(service: service)
-                        .font(.system(.callout, design: .monospaced).weight(.medium))
+                        .font(.system(size: 12, design: .monospaced).weight(.medium))
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            .padding(11)
-            .background(ManagerStyle.accent.opacity(0.055))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(10)
+            .background(ManagerStyle.selection)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(ManagerStyle.accent.opacity(0.18), lineWidth: 0.8)
+            )
 
             if snapshot?.pid != nil || snapshot?.exitCode != nil {
                 HStack(spacing: 12) {
-                    if let pid = snapshot?.pid { Text("PID " + String(pid)) }
-                    if let code = snapshot?.exitCode { Text("退出码 " + String(code)).foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : .secondary) }
+                    if let pid = snapshot?.pid {
+                        Text("PID \(pid)")
+                    }
+                    if let code = snapshot?.exitCode {
+                        Text("退出码 \(code)")
+                            .foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : ManagerStyle.muted)
+                    }
                 }
-                .font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(ManagerStyle.muted)
             }
 
-            detailLine(title: "启动命令", value: service.command.isEmpty ? "未设置" : service.command, icon: "chevron.left.forwardslash.chevron.right", monospaced: true)
+            detailLine(title: "启动命令", value: service.command.isEmpty ? "未设置" : service.command, icon: "terminal", monospaced: true)
             if !visibleArguments.isEmpty {
                 detailLine(title: "启动参数", value: visibleArguments.joined(separator: "  "), icon: "text.alignleft", monospaced: true)
             }
             detailLine(title: "工作目录", value: service.workingDirectory, icon: "folder", monospaced: true)
+
             VStack(alignment: .leading, spacing: 6) {
                 if service.startsWithManager { metadataChip("随管理器启动", icon: "power") }
                 if !service.environment.isEmpty { metadataChip("\(service.environment.count) 个环境变量", icon: "slider.horizontal.3") }
@@ -355,14 +355,16 @@ private struct ServiceOverviewCard: View {
                 }
             }
 
-            Divider().opacity(0.6)
+            Divider().opacity(0.4)
             HStack(alignment: .center, spacing: 6) {
-                Image(systemName: "person.3").foregroundColor(.secondary)
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(ManagerStyle.muted)
                 if entry.groups.isEmpty {
-                    Text("未分组").font(.caption).foregroundColor(.secondary)
+                    Text("未分组").font(.caption).foregroundColor(ManagerStyle.muted)
                 } else {
                     Text(entry.groups.map(\.name).joined(separator: "、"))
-                        .font(.caption).foregroundColor(.secondary).lineLimit(2)
+                        .font(.caption).foregroundColor(ManagerStyle.muted).lineLimit(2)
                         .help(entry.groups.map(\.name).joined(separator: "、"))
                 }
                 Spacer(minLength: 2)
@@ -370,32 +372,44 @@ private struct ServiceOverviewCard: View {
 
             ServiceEntryActions(entry: entry, model: model, onEdit: onEdit, onSelect: onSelect)
         }
-        .padding(18)
+        .padding(16)
         .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ManagerStyle.cardRadius, style: .continuous)
+                .strokeBorder(ManagerStyle.cardBorder, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.035), radius: 6, x: 0, y: 2)
     }
 
     private func detailLine(title: String, value: String, icon: String, monospaced: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: icon).foregroundColor(.secondary).frame(width: 16)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.caption2).foregroundColor(.secondary)
-                Text(value).font(monospaced ? .system(.caption, design: .monospaced) : .caption)
-                    .lineLimit(2).textSelection(.enabled)
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundColor(ManagerStyle.muted)
+                .frame(width: 15)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 10)).foregroundColor(ManagerStyle.muted)
+                Text(value)
+                    .font(monospaced ? .system(size: 11, design: .monospaced) : .system(size: 11))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
             }
             Spacer(minLength: 0)
         }
     }
 
     private func metadataChip(_ title: String, icon: String) -> some View {
-        Label(title, systemImage: icon)
-            .font(.system(size: 10, weight: .medium, design: .rounded))
-            .foregroundColor(ManagerStyle.ink)
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(ManagerStyle.canvas)
-            .clipShape(Capsule())
-            .lineLimit(1)
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9, weight: .semibold))
+            Text(title).font(.system(size: 10, weight: .medium, design: .rounded))
+        }
+        .foregroundColor(ManagerStyle.ink)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(ManagerStyle.canvas)
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
+        .lineLimit(1)
     }
 }
 
@@ -406,16 +420,19 @@ private struct ServiceTableStatus: View {
     var body: some View {
         let status = ServiceEntryState(entry: entry, model: model)
         VStack(alignment: .leading, spacing: 3) {
-            Label(status.state.0, systemImage: status.state.2)
-                .font(.system(.caption, design: .rounded).weight(.semibold))
-                .foregroundColor(status.state.1)
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(status.state.1.opacity(0.10)).clipShape(Capsule())
+            ManagerStatusBadge(
+                title: status.state.0,
+                icon: status.state.2,
+                color: status.state.1,
+                compact: true
+            )
             if let code = status.snapshot?.exitCode {
-                Text("退出码 \(code)").font(.caption2).foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : .secondary)
+                Text("退出码 \(code)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(status.snapshot?.state == .failed ? ManagerStyle.danger : ManagerStyle.muted)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
     }
 }
 
@@ -432,7 +449,7 @@ private struct ServiceEntryActions: View {
             Button {
                 model.startService(projectID: entry.project.id, environmentID: entry.environment.id, serviceID: entry.service.id)
             } label: { actionLabel("启动", icon: "play.fill") }
-                .buttonStyle(ManagerButtonStyle(.accent, iconOnly: compact))
+                .buttonStyle(ManagerButtonStyle(.start, iconOnly: compact))
                 .help("启动服务").accessibilityLabel("启动服务")
                 .disabled(status.isActive || entry.service.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button { model.stopService(serviceID: entry.service.id) } label: { actionLabel("停止", icon: "stop.fill") }

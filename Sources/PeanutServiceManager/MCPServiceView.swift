@@ -13,16 +13,18 @@ struct MCPServiceView: View {
                     readiness
                     section("接入步骤", subtitle: "一次配置，由客户端按需启动", icon: "list.number") {
                         step("1", title: "确认应用已安装", detail: "配置使用下方真实程序路径。临时构建路径在清理或重新构建后可能失效。")
-                        Divider()
+                        Divider().opacity(0.4)
                         step("2", title: "合并客户端配置", detail: "将下方配置加入客户端，并保留已有服务。Codex 使用 ~/.codex/config.toml，其他客户端可使用通用 JSON。")
-                        Divider()
+                        Divider().opacity(0.4)
                         step("3", title: "重新连接并检查", detail: "保存后在客户端重新连接，先用 workspace_list 读取目标。连接状态请在客户端查看。")
                     }
                     configurationCard("Codex", subtitle: "合并到 ~/.codex/config.toml", configuration: codexConfiguration)
                     configurationCard("通用 JSON", subtitle: "用于支持本机 STDIO 的 MCP 客户端", configuration: jsonConfiguration)
                     if let copyFeedback {
                         Label(copyFeedback, systemImage: "checkmark.circle.fill")
-                            .font(.callout).foregroundColor(ManagerStyle.success)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(ManagerStyle.success)
+                            .padding(.horizontal, 4)
                     }
                     HStack(alignment: .top, spacing: 16) {
                         section("工具能力", subtitle: "与桌面应用共享本机配置和运行状态", icon: "wrench.and.screwdriver") {
@@ -50,86 +52,75 @@ struct MCPServiceView: View {
     private var readiness: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "network")
-                    .font(.system(size: 21, weight: .medium)).foregroundColor(ManagerStyle.accent)
-                    .frame(width: 48, height: 48)
-                    .background(ManagerStyle.selection)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                ManagerIconBadge(icon: "network", color: ManagerStyle.purple, size: 44, iconSize: 20, cornerRadius: 10)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 8) {
                         Text(executableAvailable ? "MCP 服务程序已就绪" : "MCP 服务程序不可用")
-                            .font(.system(size: 17, weight: .semibold))
-                        Circle().fill(executableAvailable ? ManagerStyle.success : ManagerStyle.warning)
-                            .frame(width: 7, height: 7)
+                            .font(.system(size: 16, weight: .semibold))
+                        ManagerStatusDot(color: executableAvailable ? ManagerStyle.success : ManagerStyle.warning, size: 7.5)
                     }
                     Text(executableAvailable ? "由客户端按需启动独立进程，连接状态请在客户端中查看。" : "当前路径不存在或不可执行，请检查应用安装后重新打开。")
-                        .font(.callout).foregroundColor(.secondary)
+                        .font(.callout).foregroundColor(ManagerStyle.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text("本机 STDIO").font(.system(.caption, design: .monospaced).weight(.medium))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(ManagerStyle.canvas).clipShape(Capsule()).foregroundColor(.secondary)
+                Text("本机 STDIO").font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(ManagerStyle.canvas).clipShape(Capsule()).foregroundColor(ManagerStyle.muted)
+                    .overlay(Capsule().strokeBorder(ManagerStyle.fieldBorder, lineWidth: 0.8))
             }
-            Divider()
-            HStack(alignment: .top, spacing: 18) {
-                Text("程序路径").font(.callout).foregroundColor(.secondary).frame(width: 70, alignment: .leading)
+            Divider().opacity(0.4)
+            HStack(alignment: .top, spacing: 16) {
+                Text("程序路径").font(.callout).foregroundColor(ManagerStyle.muted).frame(width: 70, alignment: .leading)
                 ScrollView(.horizontal) {
                     Text(executablePath).font(.system(size: 12, design: .monospaced))
                         .textSelection(.enabled).fixedSize(horizontal: true, vertical: true)
-                        .padding(.vertical, 8).padding(.horizontal, 10)
+                        .padding(.vertical, 7).padding(.horizontal, 10)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ManagerStyle.canvas)
+                .background(ManagerStyle.field)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Button { copy(executablePath, label: "程序路径") } label: {
                     Label("复制路径", systemImage: "doc.on.doc")
                 }.buttonStyle(ManagerButtonStyle(.secondary))
             }
             Text("不开放网络监听端口。每个客户端独立启动 MCP 进程，与本应用共用本机配置及服务运行状态。")
-                .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.caption).foregroundColor(ManagerStyle.muted).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.025), radius: 10, x: 0, y: 3)
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .managerTableSurface()
     }
 
     private func section<Content: View>(_ title: String, subtitle: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(ManagerStyle.accent).frame(width: 34, height: 34)
-                    .background(ManagerStyle.selection).clipShape(RoundedRectangle(cornerRadius: 9))
-                VStack(alignment: .leading, spacing: 3) {
+                ManagerIconBadge(icon: icon, color: ManagerStyle.purple, size: 32, iconSize: 15, cornerRadius: 8)
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 14, weight: .semibold))
-                    Text(subtitle).font(.caption).foregroundColor(.secondary)
+                    Text(subtitle).font(.caption).foregroundColor(ManagerStyle.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             content()
         }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(ManagerStyle.card)
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.025), radius: 10, x: 0, y: 3)
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .managerTableSurface()
     }
 
     private func step(_ number: String, title: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number).font(.system(.callout, design: .rounded).weight(.bold))
-                .foregroundColor(ManagerStyle.accent).frame(width: 26, height: 26)
-                .background(ManagerStyle.selection).clipShape(Circle())
+                .foregroundColor(ManagerStyle.purple).frame(width: 24, height: 24)
+                .background(ManagerStyle.purple.opacity(0.12)).clipShape(Circle())
             capability(title, detail: detail)
         }
     }
 
     private func capability(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.callout.weight(.semibold))
-            Text(detail).font(.callout).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Text(detail).font(.callout).foregroundColor(ManagerStyle.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -138,7 +129,7 @@ struct MCPServiceView: View {
         section(title, subtitle: subtitle, icon: "chevron.left.forwardslash.chevron.right") {
             HStack {
                 Label("客户端配置", systemImage: "text.alignleft")
-                    .font(.caption.weight(.medium)).foregroundColor(.secondary)
+                    .font(.caption.weight(.medium)).foregroundColor(ManagerStyle.muted)
                 Spacer()
                 Button { copy(configuration, label: "\(title) 配置") } label: {
                     Label("复制配置", systemImage: "doc.on.doc")
@@ -147,13 +138,13 @@ struct MCPServiceView: View {
             ScrollView(.horizontal) {
                 Text(configuration).font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled).fixedSize(horizontal: true, vertical: true)
-                    .padding(14)
+                    .padding(12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(ManagerStyle.canvas)
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text("command 指向上方程序路径").font(.caption).foregroundColor(.secondary)
+            .background(ManagerStyle.field)
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ManagerStyle.fieldBorder, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Text("command 指向上方程序路径").font(.caption).foregroundColor(ManagerStyle.muted)
         }
     }
 
