@@ -18,7 +18,8 @@ args = ["--mcp-server"]
 
 - 先调用 `workspace_list` 或 `target_search`，再使用返回的稳定 UUID。项目操作以外的服务操作必须同时指定 `projectID` 和 `environmentID`；响应中包含完整目标路径。
 - 服务启停、状态和近期日志通过同一个 supervisor 完成。停止及重启只请求优雅停止；超过等待时间仍在运行时会返回错误，不会强制终止进程。
-- 资源列表会隐藏密码和凭据引用。`resource_password_get` 只在显式指定已绑定资源及其项目、环境后返回密码；该结果是明文，应仅在确有需要时读取。
+- `workspace_list` 中服务会包含其关联资源的登记信息（类型、版本、地址、数据库等），不会返回资源密码或凭据引用。服务可用 `service_save.resourceIDs` 关联当前项目和环境已绑定的资源，数组会整体替换关联列表。
+- `resource_list` 隐藏密码和凭据引用。`resource_password_get` 只在显式指定已绑定资源及其项目、环境后返回密码；该结果是明文，应仅在确有需要时读取。
 - 对配置的更改与桌面端共用文件锁；如果另一个客户端先修改了数据，本次修改会拒绝并要求重新读取目标。
 - 本地密文使用设置中的加密 key；MCP 的设置读取不返回 key。设置更新可修改 key，但不会在结果中回显。
 
@@ -27,6 +28,8 @@ args = ["--mcp-server"]
 `target_search`、`workspace_list`、`project_save`、`project_delete`、`environment_save`、`environment_attach`、`environment_detach`、`environment_delete`、`group_save`、`group_delete`、`service_save`、`service_delete`、`service_start`、`service_stop`、`service_restart`、`service_status`、`service_logs`、`resource_list`、`resource_save`、`resource_delete`、`resource_status`、`resource_password_get`、`resource_password_set`、`binding_save`、`binding_delete`、`settings_get`、`settings_set`。
 
 `service_save` 支持服务绑定 IP（`host`）、端口（`port`）和多个访问域名（`domains` 字符串数组）；绑定地址校验 IPv4 / IPv6，数组每项支持普通域名和完整 HTTP/HTTPS URL。`domains` 替换整份列表，空数组清除，省略时保留；空行和完全重复的条目会被移除，每项均校验。`host` 省略时保留、空字符串清除。
+
+服务关联资源通过 `resourceIDs` UUID 字符串数组传入；每项必须已经绑定到同一项目和环境。服务响应和 `workspace_list` 会返回 `associatedResources` 元数据，供 AI 按服务获取稳定的运行上下文。删除资源会同步清理服务关联。
 
 MCP 暂不提供配置文件导入、导出；请在应用设置页使用对应功能。
 

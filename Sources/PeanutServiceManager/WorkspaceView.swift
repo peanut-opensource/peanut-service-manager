@@ -700,6 +700,24 @@ struct WorkspaceView: View {
                         }
                     }
                 }
+                let linkedResources = model.workspace.resources.filter { service.resourceIDs.contains($0.id) }
+                if !linkedResources.isEmpty {
+                    detailCard("关联资源", icon: "externaldrive.fill") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(linkedResources) { resource in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "externaldrive.fill").foregroundColor(ManagerStyle.cyan)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(resource.name).font(.callout.weight(.semibold))
+                                        Text([resource.type.displayName, resource.version, resource.host, resource.port.map(String.init), resource.database].compactMap { $0 }.joined(separator: " · "))
+                                            .font(.caption).foregroundColor(.secondary).textSelection(.enabled)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+                }
                 if !service.environment.isEmpty {
                     detailCard("环境变量", icon: "curlybraces") {
                         Text(service.environment.keys.sorted().joined(separator: " · "))
@@ -880,7 +898,7 @@ struct WorkspaceView: View {
             GroupsEditor(environment: environment) { saveGroups($0, projectID: projectID) }
         case .service(let projectID, let environmentID, let service, let isNew):
             let groups = model.workspace.projects.first(where: { $0.id == projectID })?.environments.first(where: { $0.id == environmentID })?.groups ?? []
-            ServiceEditor(service: service, groups: groups, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), isNew: isNew) { edited, groupIDs in
+            ServiceEditor(service: service, groups: groups, runtimeResources: boundRuntimeResources(projectID: projectID, environmentID: environmentID), linkedResources: boundResources(projectID: projectID, environmentID: environmentID), isNew: isNew) { edited, groupIDs in
                 saveService(edited, groupIDs: groupIDs, projectID: projectID, environmentID: environmentID)
             }
         case .associateEnvironments(let projectID):
@@ -1039,6 +1057,10 @@ struct WorkspaceView: View {
     private func boundRuntimeResources(projectID: UUID, environmentID: UUID) -> [ResourceRecord] {
         let boundIDs = Set(model.workspace.bindings.filter { $0.projectID == projectID && $0.environmentID == environmentID }.map(\.resourceID))
         return model.workspace.resources.filter { boundIDs.contains($0.id) && ($0.type == .php || $0.type == .node) }
+    }
+    private func boundResources(projectID: UUID, environmentID: UUID) -> [ResourceRecord] {
+        let boundIDs = Set(model.workspace.bindings.filter { $0.projectID == projectID && $0.environmentID == environmentID }.map(\.resourceID))
+        return model.workspace.resources.filter { boundIDs.contains($0.id) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func uniqueEnvironments(_ values: [ProjectEnvironment]) -> [ProjectEnvironment] { unique(values) }
@@ -1541,9 +1563,10 @@ private struct ServiceEditor: View {
     let isNew: Bool
     let groups: [ServiceGroup]
     let runtimeResources: [ResourceRecord]
+    let linkedResources: [ResourceRecord]
     let onSave: (Service, Set<UUID>) -> Void
 
-    init(service: Service, groups: [ServiceGroup], runtimeResources: [ResourceRecord], isNew: Bool, onSave: @escaping (Service, Set<UUID>) -> Void) {
+    init(service: Service, groups: [ServiceGroup], runtimeResources: [ResourceRecord], linkedResources: [ResourceRecord], isNew: Bool, onSave: @escaping (Service, Set<UUID>) -> Void) {
         _draft = State(initialValue: service)
         _argumentsText = State(initialValue: service.arguments.joined(separator: "\n"))
         _environmentText = State(initialValue: service.environment.keys.sorted().map { "\($0)=\(service.environment[$0] ?? "")" }.joined(separator: "\n"))
@@ -1553,6 +1576,7 @@ private struct ServiceEditor: View {
         _selectedGroupIDs = State(initialValue: Set(groups.filter { $0.serviceIDs.contains(service.id) }.map(\.id)))
         self.groups = groups
         self.runtimeResources = runtimeResources
+        self.linkedResources = linkedResources
         self.isNew = isNew
         self.onSave = onSave
     }
@@ -1678,6 +1702,33 @@ private struct ServiceEditor: View {
                                     ))
                                     .toggleStyle(.checkbox).padding(.vertical, 8)
                                     if index < groups.count - 1 { Divider() }
+                                }
+                            }
+                        }
+                    }
+
+                    ManagerFormCard("关联资源", subtitle: "只显示当前项目和环境已绑定的资源；关联后会显示在服务详情与 MCP。", icon: "externaldrive.fill") {
+                        if linkedResources.isEmpty {
+                            Text("当前环境还没有绑定资源。请先在资源管理中关联资源。")
+                                .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(linkedResources.enumerated()), id: \.element.id) { index, resource in
+                                    Toggle(isOn: Binding(
+                                        get: { draft.resourceIDs.contains(resource.id) },
+                                        set: { enabled in
+                                            if enabled { draft.resourceIDs = Array(Set(draft.resourceIDs + [resource.id])) }
+                                            else { draft.resourceIDs.removeAll { $0 == resource.id } }
+                                        }
+                                    )) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(resource.name).font(.callout.weight(.semibold))
+                                            Text([resource.type.displayName, resource.version, resource.host, resource.port.map(String.init), resource.database].compactMap { $0 }.joined(separator: " · "))
+                                                .font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .toggleStyle(.checkbox).padding(.vertical, 8)
+                                    if index < linkedResources.count - 1 { Divider() }
                                 }
                             }
                         }

@@ -59,6 +59,27 @@ struct Service: Codable, Identifiable, Equatable {
     var host: String? = nil
     var domains: [String]? = nil
     var port: Int? = nil
+    var resourceIDs: [UUID] = []
+
+    private enum CodingKeys: String, CodingKey { case id, name, description, workingDirectory, command, arguments, environment, runtimeResourceID, startsWithManager, host, domains, port, resourceIDs }
+
+    init(id: UUID = UUID(), name: String, description: String = "", workingDirectory: String, command: String, arguments: [String] = [], environment: [String: String] = [:], runtimeResourceID: UUID? = nil, startsWithManager: Bool = false, host: String? = nil, domains: [String]? = nil, port: Int? = nil, resourceIDs: [UUID] = []) {
+        self.id = id; self.name = name; self.description = description; self.workingDirectory = workingDirectory; self.command = command
+        self.arguments = arguments; self.environment = environment; self.runtimeResourceID = runtimeResourceID; self.startsWithManager = startsWithManager
+        self.host = host; self.domains = domains; self.port = port; self.resourceIDs = resourceIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        workingDirectory = try c.decode(String.self, forKey: .workingDirectory); command = try c.decode(String.self, forKey: .command)
+        arguments = try c.decodeIfPresent([String].self, forKey: .arguments) ?? []; environment = try c.decodeIfPresent([String: String].self, forKey: .environment) ?? [:]
+        runtimeResourceID = try c.decodeIfPresent(UUID.self, forKey: .runtimeResourceID); startsWithManager = try c.decodeIfPresent(Bool.self, forKey: .startsWithManager) ?? false
+        host = try c.decodeIfPresent(String.self, forKey: .host); domains = try c.decodeIfPresent([String].self, forKey: .domains); port = try c.decodeIfPresent(Int.self, forKey: .port)
+        resourceIDs = try c.decodeIfPresent([UUID].self, forKey: .resourceIDs) ?? []
+    }
 
     var hasValidBindingHost: Bool {
         guard let host = AccessAddress.nonempty(host) else { return true }

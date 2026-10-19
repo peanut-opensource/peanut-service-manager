@@ -64,16 +64,36 @@ final class AppModel: ObservableObject {
     }
 
     func configurationExport() throws -> Data {
-        try LocalConfigurationFile(workspace: workspace, credentials: CredentialVault().exportedConfiguration()).encoded()
+        try LocalConfigurationFile.make(workspace: workspace, vault: CredentialVault()).encoded()
     }
 
     func importConfiguration(_ data: Data) throws {
-        let imported = try LocalConfigurationFile.decode(data)
+        let decoded = try LocalConfigurationFile.decode(data)
         let vault = CredentialVault()
         let snapshot = try vault.exportedConfiguration()
+        var importedWorkspace = decoded.workspace
+        var secrets: [String: Data] = [:]
+        for projectIndex in importedWorkspace.projects.indices {
+            for environmentIndex in importedWorkspace.projects[projectIndex].environments.indices {
+                for serviceIndex in importedWorkspace.projects[projectIndex].environments[environmentIndex].services.indices {
+                    let service = importedWorkspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex]
+                    importedWorkspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].resourceIDs = Array(Set(service.resourceIDs)).sorted { $0.uuidString < $1.uuidString }
+                }
+            }
+        }
+        for resourceIndex in importedWorkspace.resources.indices {
+            let resourceID = importedWorkspace.resources[resourceIndex].id
+            if let password = decoded.passwords[resourceID] {
+                let reference = "resource-\(resourceID.uuidString)"
+                importedWorkspace.resources[resourceIndex].credentialReference = reference
+                secrets[reference] = password
+            } else {
+                importedWorkspace.resources[resourceIndex].credentialReference = nil
+            }
+        }
         do {
-            try vault.replaceConfiguration(with: imported.credentials)
-            try store.replace(with: imported.workspace)
+            try vault.replacePasswords(secrets)
+            try store.replace(with: importedWorkspace)
             workspace = store.workspace
             selectedProjectID = nil
             selectedEnvironmentID = nil
@@ -451,8 +471,12 @@ final class AppModel: ObservableObject {
             for projectIndex in workspace.projects.indices {
                 for environmentIndex in workspace.projects[projectIndex].environments.indices {
                     for serviceIndex in workspace.projects[projectIndex].environments[environmentIndex].services.indices where
-                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID == resourceID {
-                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID = nil
+                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID == resourceID ||
+                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].resourceIDs.contains(resourceID) {
+                        if workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID == resourceID {
+                            workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID = nil
+                        }
+                        workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].resourceIDs.removeAll { $0 == resourceID }
                     }
                 }
             }

@@ -151,7 +151,7 @@ struct SettingsView: View {
                     }
 
                     settingsCard("配置文件", subtitle: "导出备份或替换本机配置", icon: "doc.on.doc", color: ManagerStyle.warning) {
-                        Text("导出的 JSON 包含项目、环境、服务、资源和密码密文。导入前会校验格式与关联，成功后替换当前配置。")
+                        Text("导出的 JSON 含资源密码明文，请妥善保管文件。导入会校验格式与关联，并使用本机加密 key 加密密码后替换当前配置。")
                             .font(.callout).foregroundColor(ManagerStyle.muted).fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 10) {
                             Button(action: exportConfiguration) {

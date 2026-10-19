@@ -53,6 +53,17 @@ public struct CredentialVault {
         try withExclusiveFileLock { try save(configuration) }
     }
 
+    func replacePasswords(_ passwords: [String: Data]) throws {
+        try withExclusiveFileLock {
+            let current = try loadStore()
+            var next = StoreFile(formatVersion: current.formatVersion, encryptionKey: current.encryptionKey)
+            for (reference, password) in passwords {
+                next.secrets[reference] = try WorkspaceCipher.encryptCredential(password, key: current.encryptionKey)
+            }
+            try save(next)
+        }
+    }
+
     /// The key itself is intentionally stored as readable local configuration.
     public func setEncryptionKey(_ newKey: String) throws {
         guard !newKey.isEmpty else { throw VaultError.invalidEncryptionKey }
@@ -106,6 +117,11 @@ public struct CredentialVault {
               binding.projectID == projectID,
               binding.environmentID == environmentID else { throw VaultError.bindingMismatch }
         guard let reference = resource.credentialReference else { throw VaultError.invalidCredentialReference }
+        return try withExclusiveFileLock { try read(reference: reference) }
+    }
+
+    func readLocally(for resource: ResourceRecord) throws -> Data? {
+        guard let reference = resource.credentialReference, !reference.isEmpty else { return nil }
         return try withExclusiveFileLock { try read(reference: reference) }
     }
 

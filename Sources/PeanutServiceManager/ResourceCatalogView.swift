@@ -18,6 +18,8 @@ struct ResourceCatalogView: View {
     @State private var isCheckingDocker = false
     @State private var probeMessage: String?
     @State private var probeSucceeded = false
+    @State private var decryptedPassword: String?
+    @State private var passwordReadError: String?
     @FocusState private var isSearchFocused: Bool
 
     private var selectedResource: ResourceRecord? {
@@ -60,7 +62,8 @@ struct ResourceCatalogView: View {
             Text("资源配置、项目环境绑定及该资源已加密保存的密码将被删除。此操作无法撤销。")
         }
         .onAppear(perform: chooseInitialTarget)
-        .onChange(of: model.selectedResourceID) { _ in probeMessage = nil }
+        .onChange(of: model.selectedResourceID) { _ in probeMessage = nil; loadSelectedPassword() }
+        .onAppear(perform: loadSelectedPassword)
     }
 
     private var resourceList: some View {
@@ -122,6 +125,8 @@ struct ResourceCatalogView: View {
                         .width(min: 50, ideal: 65, max: 90)
                     TableColumn("Host / Port") { resource in listCell(listAddress(resource)) }
                         .width(min: 110, ideal: 140)
+                    TableColumn("密码") { resource in listCell(plaintextPassword(resource) ?? (resource.credentialReference == nil ? "—" : "读取失败")) }
+                        .width(min: 90, ideal: 130)
                     TableColumn("用途") { resource in listCell(resource.purpose ?? "—") }
                         .width(min: 100, ideal: 130)
                     TableColumn("绑定项目 / 环境") { resource in listCell(bindingSummary(resource)) }
@@ -154,6 +159,12 @@ struct ResourceCatalogView: View {
 
     private func listCell(_ value: String) -> some View {
         Text(value).lineLimit(1).truncationMode(.middle).help(value)
+    }
+
+    private func plaintextPassword(_ resource: ResourceRecord) -> String? {
+        guard let data = try? CredentialVault().readLocally(for: resource),
+              let password = String(data: data, encoding: .utf8) else { return nil }
+        return password
     }
 
     private func listAddress(_ resource: ResourceRecord) -> String {
@@ -264,6 +275,16 @@ struct ResourceCatalogView: View {
                         detailRow("连接信息", connectionDescription(resource))
                         detailRow("容器信息", dockerDescription(resource))
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                }
+                if resource.credentialReference != nil {
+                    ManagerFormCard("资源密码", subtitle: "从本机加密密码库解密显示", icon: "key.fill") {
+                        if let decryptedPassword {
+                            Text(decryptedPassword).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 7)
+                        } else {
+                            Text(passwordReadError ?? "正在读取密码…").font(.callout).foregroundColor(.secondary)
+                        }
+                    }
                 }
                 if resource.type == .dockerContainer {
                     ManagerFormCard("容器状态", subtitle: "读取当前容器运行状态", icon: "shippingbox") {
@@ -381,7 +402,17 @@ struct ResourceCatalogView: View {
 
     private func unbind(_ resource: ResourceRecord) {
         guard let projectID = bindingProjectID, let environmentID = bindingEnvironmentID else { return }
-        model.update { $0.bindings.removeAll { $0.projectID == projectID && $0.environmentID == environmentID && $0.resourceID == resource.id } }
+        model.update { workspace in
+            workspace.bindings.removeAll { $0.projectID == projectID && $0.environmentID == environmentID && $0.resourceID == resource.id }
+            guard let projectIndex = workspace.projects.firstIndex(where: { $0.id == projectID }),
+                  let environmentIndex = workspace.projects[projectIndex].environments.firstIndex(where: { $0.id == environmentID }) else { return }
+            for serviceIndex in workspace.projects[projectIndex].environments[environmentIndex].services.indices {
+                workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].resourceIDs.removeAll { $0 == resource.id }
+                if workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID == resource.id {
+                    workspace.projects[projectIndex].environments[environmentIndex].services[serviceIndex].runtimeResourceID = nil
+                }
+            }
+        }
     }
 
     private func chooseInitialTarget() {
@@ -411,6 +442,18 @@ struct ResourceCatalogView: View {
             }
             isCheckingDocker = false
         }
+    }
+
+    private func loadSelectedPassword() {
+        guard let resource = selectedResource, resource.credentialReference != nil else {
+            decryptedPassword = nil; passwordReadError = nil; return
+        }
+        do {
+            guard let data = try CredentialVault().readLocally(for: resource), let value = String(data: data, encoding: .utf8) else {
+                decryptedPassword = nil; passwordReadError = "本机密码库中没有可读取的密码。"; return
+            }
+            decryptedPassword = value; passwordReadError = nil
+        } catch { decryptedPassword = nil; passwordReadError = error.localizedDescription }
     }
 
     private func resourceSummary(_ resource: ResourceRecord) -> String {
@@ -514,11 +557,7 @@ private struct ResourceEditor: View {
                                 }
                                 optionalField(draft.type == .redis ? "数据库索引" : "数据库名称", value: $draft.database, placeholder: draft.type == .redis ? "0" : "可选")
                                 optionalField("用户名", value: $draft.username, placeholder: "可选")
-                                ManagerSecureField(
-                                    title: "资源密码（可选）",
-                                    placeholder: draft.credentialReference == nil ? "输入资源密码" : "留空以保留当前密码",
-                                    text: $secret
-                                )
+                                ManagerTextField(title: "资源密码（可选）", placeholder: "密码会在本机加密保存，界面显示明文", text: $secret)
                                 if draft.credentialReference != nil {
                                     Label("已有密码已在本机加密保存", systemImage: "lock.fill")
                                         .font(.caption).foregroundColor(.secondary)
@@ -553,6 +592,7 @@ private struct ResourceEditor: View {
         }
         .frame(width: 660, height: editorHeight)
         .background(ManagerStyle.canvas)
+        .onAppear(perform: loadExistingPassword)
     }
 
     private var editorHeight: CGFloat {
@@ -582,6 +622,13 @@ private struct ResourceEditor: View {
         } catch {
             credentialError = error.localizedDescription
         }
+    }
+
+    private func loadExistingPassword() {
+        guard secret.isEmpty, draft.credentialReference != nil,
+              let data = try? CredentialVault().readLocally(for: draft),
+              let value = String(data: data, encoding: .utf8) else { return }
+        secret = value
     }
 
     private var editorButtonsForResource: some View {

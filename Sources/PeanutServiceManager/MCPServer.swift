@@ -60,7 +60,7 @@ final class LocalMCPServer {
         }
         return [
             tool("target_search", "Search project, shared environment, group, service and resource names. Returns every candidate with stable IDs; mutations always require explicit IDs.", ["query": "string"], ["query"]),
-            tool("workspace_list", "List projects, shared environments, services, groups and resource bindings with stable IDs and full paths. Service environment values are redacted."),
+            tool("workspace_list", "List projects, shared environments, services and their associated resource metadata with stable IDs and full paths. Service environment values and resource passwords are not returned."),
             tool("project_save", "Create a project, or rename a project by projectID.", ["projectID": "string", "name": "string"], ["name"]),
             tool("project_delete", "Delete a project and its bindings. Refuses while any owned service is active.", ["projectID": "string"], ["projectID"]),
             tool("environment_save", "Create a shared environment, or rename it and all project associations by environmentID.", ["environmentID": "string", "name": "string"], ["name"]),
@@ -69,7 +69,7 @@ final class LocalMCPServer {
             tool("environment_delete", "Delete an unassociated shared environment. Detach its project associations first.", ["environmentID": "string"], ["environmentID"]),
             tool("group_save", "Create/update a group. serviceIDs, if supplied, replaces its membership with services in this exact environment.", scope.merging(["groupID": "string", "name": "string", "serviceIDs": "array"]) { _, n in n }, ["projectID", "environmentID", "name"]),
             tool("group_delete", "Delete a group, preserving its services.", scope.merging(["groupID": "string"]) { _, n in n }, ["projectID", "environmentID", "groupID"]),
-            tool("service_save", "Create/update a service by stable ID. Existing fields omitted on update are preserved. Use empty runtimeResourceID/host, domains [] or port 0 to clear optional fields. Host is the binding IPv4/IPv6 address; domains is the ordered list of tenant access domains or complete HTTP(S) URLs. The list replaces all domains; omitted domains preserves the list. These metadata fields do not change the launch command. Environment object replaces all environment variables.", scope.merging(["serviceID": "string", "name": "string", "description": "string", "workingDirectory": "string", "command": "string", "arguments": "array", "environment": "object", "runtimeResourceID": "string", "startsWithManager": "boolean", "host": "string", "domains": "array", "port": "integer"]) { _, n in n }, ["projectID", "environmentID", "name"]),
+            tool("service_save", "Create/update a service by stable ID. Existing fields omitted on update are preserved. resourceIDs replaces associated resources and must reference resources bound to this exact project/environment. Use empty runtimeResourceID/host, domains [] or port 0 to clear optional fields. Host is the binding IPv4/IPv6 address; domains is the ordered list of tenant access domains or complete HTTP(S) URLs. Environment object replaces all environment variables.", scope.merging(["serviceID": "string", "name": "string", "description": "string", "workingDirectory": "string", "command": "string", "arguments": "array", "environment": "object", "runtimeResourceID": "string", "resourceIDs": "array", "startsWithManager": "boolean", "host": "string", "domains": "array", "port": "integer"]) { _, n in n }, ["projectID", "environmentID", "name"]),
             tool("service_delete", "Delete an inactive service and remove it from all groups.", serviceScope, ["projectID", "environmentID", "serviceID"]),
             tool("service_start", "Start this exact service through the shared supervisor. Returns the actual supervisor acknowledgement.", serviceScope, ["projectID", "environmentID", "serviceID"]),
             tool("service_stop", "Request graceful stop only. Never force-kills a service.", serviceScope, ["projectID", "environmentID", "serviceID"]),
@@ -249,6 +249,7 @@ final class LocalMCPServer {
     private func safeService(_ service: Service, path: String) throws -> [String: Any] {
         var value = try object(service) as! [String: Any]
         value["environment"] = service.environment.mapValues { _ in "[redacted]" }
+        value["associatedResources"] = try model.workspace.resources.filter { service.resourceIDs.contains($0.id) }.map(safeResource)
         value["path"] = path
         return value
     }
@@ -446,6 +447,14 @@ final class LocalMCPServer {
             if let value = args["command"] as? String { service.command = value }
             if let value = args["arguments"] as? [String] { service.arguments = value }
             if let value = args["environment"] as? [String: String] { service.environment = value }
+            if let value = args["resourceIDs"] as? [String] {
+                let ids = value.compactMap(UUID.init(uuidString:))
+                guard ids.count == value.count, Set(ids).count == ids.count else { throw ToolError("resourceIDs must contain unique resource UUIDs") }
+                let environment = model.workspace.projects[p].environments[e]
+                let boundIDs = Set(model.workspace.bindings.filter { $0.projectID == model.workspace.projects[p].id && $0.environmentID == environment.id }.map(\.resourceID))
+                guard ids.allSatisfy(boundIDs.contains) else { throw ToolError("Every resourceID must be bound to this exact project/environment") }
+                service.resourceIDs = ids
+            }
             if let value = args["startsWithManager"] as? Bool { service.startsWithManager = value }
             if let value = args["host"] as? String { service.host = AccessAddress.nonempty(value) }
             if let value = args["domains"] as? [String] { service.domains = AccessAddress.normalizedDomains(value) }
@@ -540,8 +549,9 @@ final class LocalMCPServer {
                 workspace.bindings.removeAll { $0.resourceID == resource.id }
                 for p in workspace.projects.indices {
                     for e in workspace.projects[p].environments.indices {
-                        for s in workspace.projects[p].environments[e].services.indices where workspace.projects[p].environments[e].services[s].runtimeResourceID == resource.id {
-                            workspace.projects[p].environments[e].services[s].runtimeResourceID = nil
+                        for s in workspace.projects[p].environments[e].services.indices {
+                            if workspace.projects[p].environments[e].services[s].runtimeResourceID == resource.id { workspace.projects[p].environments[e].services[s].runtimeResourceID = nil }
+                            workspace.projects[p].environments[e].services[s].resourceIDs.removeAll { $0 == resource.id }
                         }
                     }
                 }
@@ -555,7 +565,7 @@ final class LocalMCPServer {
             let environment = project.environments[e]
             let existing = model.workspace.bindings.first { $0.projectID == project.id && $0.environmentID == environment.id && $0.resourceID == resource.id }
             if name == "binding_delete", existing == nil { throw ToolError("Binding does not exist") }
-            if name == "binding_delete", environment.services.contains(where: { $0.runtimeResourceID == resource.id }) { throw ToolError("Clear service runtimeResourceID references before removing this binding") }
+            if name == "binding_delete", environment.services.contains(where: { $0.runtimeResourceID == resource.id || $0.resourceIDs.contains(resource.id) }) { throw ToolError("Clear service resource associations before removing this binding") }
             try save { workspace in
                 workspace.bindings.removeAll { $0.projectID == project.id && $0.environmentID == environment.id && $0.resourceID == resource.id }
                 if name == "binding_save" { workspace.bindings.append(ProjectEnvironmentBinding(projectID: project.id, environmentID: environment.id, resourceID: resource.id, purpose: args["purpose"] as? String ?? existing?.purpose)) }
