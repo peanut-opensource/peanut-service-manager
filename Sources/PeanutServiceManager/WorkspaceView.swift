@@ -464,6 +464,10 @@ struct WorkspaceView: View {
 
     private func serviceWorkspace(_ environment: ProjectEnvironment) -> some View {
         VStack(spacing: 0) {
+            if perspective == .project {
+                projectBoundResourcesBar(environment)
+                Divider()
+            }
             groupFilterBar(environment)
             Divider()
             HStack(spacing: 0) {
@@ -476,6 +480,73 @@ struct WorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(ManagerStyle.canvas)
+    }
+
+    private func projectBoundResourcesBar(_ environment: ProjectEnvironment) -> some View {
+        let bindings = model.workspace.bindings.filter {
+            $0.projectID == project?.id && $0.environmentID == environment.id
+        }
+        let resources = bindings.compactMap { binding -> (ResourceRecord, ProjectEnvironmentBinding)? in
+            guard let resource = model.workspace.resources.first(where: { $0.id == binding.resourceID }) else { return nil }
+            return (resource, binding)
+        }
+
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("绑定资源").font(.system(size: 12, weight: .bold, design: .rounded))
+                Text("\(resources.count) 项 · \(environment.name)").font(.caption2).foregroundColor(.secondary)
+            }
+            .fixedSize()
+
+            if resources.isEmpty {
+                Text("此环境尚未绑定资源")
+                    .font(.caption).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(resources, id: \.0.id) { resource, binding in
+                            Button {
+                                model.selectedResourceID = resource.id
+                                activeTab = 4
+                            } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "cylinder.split.1x2.fill")
+                                        .foregroundColor(ManagerStyle.accent)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(resource.name).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                                        Text([resource.type.displayName, resourceAddress(resource), binding.purpose]
+                                            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                                            .font(.system(size: 10)).foregroundColor(.secondary).lineLimit(1)
+                                    }
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(ManagerStyle.canvas)
+                                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(ManagerStyle.cardBorder, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .help("查看资源详情：\(resource.name)")
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+
+            Button("管理资源") { activeTab = 4 }
+                .buttonStyle(ManagerButtonStyle(.secondary))
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 5)
+        .background(ManagerStyle.card)
+    }
+
+    private func resourceAddress(_ resource: ResourceRecord) -> String? {
+        if let host = resource.host, let port = resource.port { return "\(host):\(port)" }
+        if let host = resource.host { return host }
+        if let path = resource.executablePath { return path }
+        return resource.version
     }
 
     private func groupFilterBar(_ environment: ProjectEnvironment) -> some View {
