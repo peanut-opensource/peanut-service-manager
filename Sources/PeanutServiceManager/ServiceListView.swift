@@ -183,13 +183,13 @@ struct ServiceListView: View {
             TableColumn("运行状态") { entry in
                 ServiceTableStatus(entry: entry, model: model)
             }
-            .width(110)
+            .width(min: 110, ideal: 110)
             TableColumn("PID") { entry in
                 Text(model.processSnapshots[entry.id]?.pid.map(String.init) ?? "—")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
             }
-            .width(68)
+            .width(min: 68, ideal: 68)
             TableColumn("访问入口") { entry in
                 ServiceAccessLinks(service: entry.service, compact: true)
                     .font(.system(.caption, design: .monospaced))
@@ -202,7 +202,7 @@ struct ServiceListView: View {
                     onSelect: { onSelect(entry.project.id, entry.environment.id, entry.service.id) }
                 )
             }
-            .width(150)
+            .width(min: 150, ideal: 150)
         }
     }
 

@@ -191,11 +191,11 @@ struct WorkspaceView: View {
             Divider().opacity(0.55)
         HSplitView {
             if perspective == .project {
-                projectColumn.frame(minWidth: 130, idealWidth: 155, maxWidth: 180)
-                environmentColumn.frame(minWidth: 140, idealWidth: 170, maxWidth: 195)
+                projectColumn.frame(minWidth: 130, idealWidth: 155)
+                environmentColumn.frame(minWidth: 140, idealWidth: 170)
             } else {
-                sharedEnvironmentColumn.frame(minWidth: 150, idealWidth: 180, maxWidth: 205)
-                environmentProjectsColumn.frame(minWidth: 150, idealWidth: 185, maxWidth: 215)
+                sharedEnvironmentColumn.frame(minWidth: 150, idealWidth: 180)
+                environmentProjectsColumn.frame(minWidth: 150, idealWidth: 185)
             }
             if let environment {
                 serviceWorkspace(environment)
@@ -472,7 +472,7 @@ struct WorkspaceView: View {
             Divider()
             HStack(spacing: 0) {
                 serviceListPane(environment)
-                    .frame(minWidth: 235, idealWidth: 295, maxWidth: 360)
+                    .frame(minWidth: 235, idealWidth: 295)
                 Divider()
                 serviceDetailPane(environment)
                     .frame(minWidth: 340, maxWidth: .infinity)
