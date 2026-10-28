@@ -11,14 +11,17 @@ AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 EXECUTABLE="$DESTINATION/Contents/MacOS/peanut-service-manager"
 HELPER="$DESTINATION/Contents/Library/LaunchServices/peanut-service-supervisor"
 
-"$ROOT/scripts/package-app.sh" release
-
 if pgrep -f "$EXECUTABLE" >/dev/null 2>&1; then
   echo "请先正常退出已安装的花生服务管理器，再运行安装脚本。" >&2
   exit 1
 fi
 if [[ -e "$STAGING" || -e "$BACKUP" ]]; then
   echo "发现安装暂存目录或备份目录，未覆盖：$STAGING / $BACKUP" >&2
+  exit 1
+fi
+if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+  echo "共享 supervisor 仍已加载，未构建或替换应用。请在所有服务和客户端安全退出后安排更新窗口。" >&2
+  echo "目标：$HELPER" >&2
   exit 1
 fi
 if [[ -f "$AGENT" ]]; then
@@ -30,6 +33,7 @@ if [[ -f "$AGENT" ]]; then
     exit 1
   fi
 fi
+"$ROOT/scripts/package-app.sh" release
 SOURCE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SOURCE_APP/Contents/Info.plist")"
 if [[ "$SOURCE_ID" != "org.peanutopensource.PeanutServiceManager" ]]; then
   echo "构建产物的应用标识不匹配，停止安装。" >&2
