@@ -37,7 +37,7 @@ MCP 配置方法、客户端配置片段和工具边界见 [本地 MCP 使用说
 - 本机生产构建并安装：`./scripts/install-app.sh`，安装到 `/Applications/Peanut Service Manager.app`；后续更新替换应用包，不删除 `~/Library/Application Support/PeanutServiceManager` 中的配置。
 - 打包在合并、裁剪二进制后，先签名 supervisor，再签名应用包，并严格校验两个架构。默认使用无需开发者账号的本地 ad-hoc 签名；可通过 `PSM_CODESIGN_IDENTITY=<有效身份的完整 SHA-1 指纹>` 使用已有代码签名证书。隐私授权、更新窗口和校验方式见 [macOS 隐私授权](docs/macos-privacy.md)。
 - 当前本机验证版本：`0.0.1`。通用 `.app` 同时包含 Intel 与 Apple Silicon 二进制。
-- 当前本机 `.app` 约 `2.6 MB`。打包先用 `lipo` 合并 arm64 与 x86_64，再对通用二进制执行 `strip -x` 移除本地符号；实测主程序约减少 `60%`，supervisor 约减少 `52%`。多尺寸 `AppIcon.icns` 为 `150 KB`，菜单栏 36 × 36 像素图为 `721 B`。
+- 当前本机签名 `.app` 约 `5.2 MB`。打包先用 `lipo` 合并 arm64 与 x86_64，再对通用二进制执行 `strip -x` 移除本地符号，最后签名。多尺寸 `AppIcon.icns` 为 `150 KB`，菜单栏 36 × 36 像素图为 `721 B`。
 - `dev`：日常开发及默认分支，本地主目录保持检出此分支。
 - `main`：稳定分支，推送时生成预览版。
 - 版本 tag：生成正式版。

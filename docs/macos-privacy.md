@@ -24,10 +24,14 @@ codesign -d -r- '/Applications/Peanut Service Manager.app/Contents/Library/Launc
 
 ## 授权对象
 
-对于文稿目录访问，打开系统设置 → 隐私与安全性 → 文件与文件夹，展开 `peanut-service-supervisor`，核对“文稿”文件夹。存在同名条目时，通过右键“在访达中显示”核对真实位置，安装版应为：
+完整签名后，2026-10-28 本机实际请求的 `AUTHREQ_SUBJECT` 为 `org.peanutopensource.PeanutServiceManager`，责任进程仍是 supervisor。系统设置 → 隐私与安全性 → 文件与文件夹中对应 `Peanut Service Manager`（花生服务管理器）的“文稿”文件夹；右键“在访达中显示”应定位 `/Applications/Peanut Service Manager.app`。旧的同名 helper 权限条目不能代替这个新主体的授权。
+
+对于仍以 helper 路径为主体的旧安装，在同一页面展开 `peanut-service-supervisor`，核对“文稿”文件夹。存在同名条目时，通过右键“在访达中显示”核对真实位置，安装版 helper 应为：
 
 `/Applications/Peanut Service Manager.app/Contents/Library/LaunchServices/peanut-service-supervisor`
 
 Finder 可用“前往文件夹”定位上述隐藏包内路径。只给需要的目录权限；不默认扩大为完全磁盘访问权限、不修改 TCC 数据库、不全局重置授权。授权开关已开但日志仍提示代码要求不匹配时，先修复和固定程序身份，随后在准确条目上重新授权，并通过实际文件访问确认复用。文件与文件夹列表由系统访问请求产生，不能任意添加文件。
+
+本次实际验证：用户为新应用主体允许一次“文稿”后，恢复 ST、文档站和两个原型服务，五个既有 HTTP 入口均返回 200，观察窗口内没有新的 `AUTHREQ_PROMPTING` 或代码要求不匹配。此结果覆盖本次安装和这些访问路径；不代表未来改动二进制后无需重新授权。
 
 参考：[Apple DTS 对 ad-hoc 签名和责任归属的说明](https://developer.apple.com/forums/thread/125438)、[Apple 代码签名要求说明](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements/)。
