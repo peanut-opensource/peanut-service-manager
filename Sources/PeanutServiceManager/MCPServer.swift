@@ -128,13 +128,15 @@ final class LocalMCPServer {
         func result(_ value: [String: Any]) { send(["jsonrpc": "2.0", "id": id, "result": value]) }
         func failure(_ code: Int, _ message: String) { send(["jsonrpc": "2.0", "id": id, "error": ["code": code, "message": message]]) }
         if method == "initialize" {
-            guard let params = request["params"] as? [String: Any], params["protocolVersion"] is String,
+            guard let params = request["params"] as? [String: Any], let requestedVersion = params["protocolVersion"] as? String,
                   params["clientInfo"] is [String: Any], params["capabilities"] is [String: Any] else {
                 failure(-32602, "initialize requires protocolVersion, clientInfo and capabilities"); return
             }
             initialized = true
             ready = false
-            result(["protocolVersion": "2025-11-25", "capabilities": ["tools": ["listChanged": false]],
+            let supportedVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
+            let negotiatedVersion = supportedVersions.contains(requestedVersion) ? requestedVersion : "2025-11-25"
+            result(["protocolVersion": negotiatedVersion, "capabilities": ["tools": ["listChanged": false]],
                     "serverInfo": ["name": "peanut-service-manager", "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.1"],
                     "instructions": "Local macOS service manager. Use stable UUID IDs from workspace_list and the complete project/environment scope. Passwords require an explicit binding and resource_password_get. Stops are graceful only."])
             return

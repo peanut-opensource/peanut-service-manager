@@ -3,26 +3,30 @@ import AppKit
 import Carbon.HIToolbox
 
 @main
+enum PeanutServiceManagerEntry {
+    @MainActor static func main() {
+        guard CommandLine.arguments.contains("--mcp-server") else {
+            PeanutServiceManagerApp.main()
+            return
+        }
+        do {
+            let model = AppModel(store: try WorkspaceStore())
+            LocalMCPServer.start(model: model)
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            NSApplication.shared.run()
+        } catch {
+            FileHandle.standardError.write(Data("MCP startup failed: \(error.localizedDescription)\n".utf8))
+            exit(EXIT_FAILURE)
+        }
+    }
+}
+
 struct PeanutServiceManagerApp: App {
     @NSApplicationDelegateAdaptor(ManagerAppDelegate.self) private var appDelegate
     @State private var model: AppModel?
     @State private var startupError: String?
 
     init() {
-        if CommandLine.arguments.contains("--mcp-server") {
-            do {
-                let model = AppModel(store: try WorkspaceStore())
-                _model = State(initialValue: model)
-                _startupError = State(initialValue: nil)
-                model.startServicesMarkedForManagerLaunch()
-                LocalMCPServer.start(model: model)
-                return
-            } catch {
-                _model = State(initialValue: nil)
-                _startupError = State(initialValue: error.localizedDescription)
-                return
-            }
-        }
         do {
             _model = State(initialValue: AppModel(store: try WorkspaceStore()))
             _startupError = State(initialValue: nil)
